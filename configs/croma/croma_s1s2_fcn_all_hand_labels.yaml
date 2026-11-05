@@ -26,9 +26,12 @@ head:
   num_classes: 2
 
 preprocessing:
-  profile: pangaea_sen1floods11_joint_mean_std
+  normalization:
+    method: two_sigma_stretch
+    stats_file: configs/statistics/sen1floods11_train.yaml
+    use_8_bit: false
+
   crop_size: 120
-  ignore_index: 255
 
 training:
   epochs: 100
