@@ -178,7 +178,7 @@ class Sen1Floods11Dataset(Dataset):
         for modality in self.modalities:
 
             with rasterio.open(paths[modality]) as src:
-                image = src.read().astype(np.float32)
+               image = src.read(masked=True).astype(np.float32).filled(np.nan)
 
             sample[modality] = torch.from_numpy(image)
 
