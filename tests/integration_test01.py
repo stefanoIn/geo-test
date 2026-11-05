@@ -1,4 +1,15 @@
-'''Integration test to make sure that everything is integrated correctly'''
+"""Check that the configured CROMA encoder, token-to-spatial adapter and FCN
+head work together as a dense prediction model.
+
+Loads the local pretrained checkpoint and passes one synthetic SAR/optical
+sample through the model. Checks the output shape and finite logits, then
+backpropagates a cross-entropy loss against random labels to verify that the
+encoder stays frozen and the FCN head receives finite, nonzero gradients.
+
+Uses no real dataset or preprocessing pipeline and performs no optimizer step.
+This checks model integration, not segmentation accuracy or full training.
+Run from the project root with: python -m tests.integration_test01
+"""
 
 from pathlib import Path
 
