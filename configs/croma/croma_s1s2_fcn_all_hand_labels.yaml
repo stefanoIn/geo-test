@@ -20,6 +20,11 @@ model:
   image_resolution: 120
   freeze_encoder: true
 
+adapter:
+  name: token_to_spatial
+  feature_key: tokens
+  grid_size: null  # Automatically infer square grid (15x15 for CROMA at 120px)
+
 head:
   name: fcn
   in_channels: 1024
