@@ -1,4 +1,3 @@
-
 from pathlib import Path
 
 import torch
@@ -138,18 +137,22 @@ class NormalizeFromStats:
     """
     Apply previously computed channel statistics.
 
-    method:
-        "zscore" -> (x - mean) / std
-        "satmae" -> mean +/- 2std, clipped to [0, 1]
+    Methods:
+        "zscore":
+            (x - mean) / std
+
+        "two_sigma_stretch":
+            Linear contrast stretching using mean +/- 2 std,
+            clipped to [0, 1].
     """
 
     def __init__(
         self,
         statistics,
-        method="satmae",
+        method="two_sigma_stretch",
         use_8_bit=False,
     ):
-        if method not in {"zscore", "satmae"}:
+        if method not in {"zscore", "two_sigma_stretch"}:
             raise ValueError(f"Unknown method: {method}")
 
         self.statistics = statistics
@@ -184,7 +187,7 @@ class NormalizeFromStats:
             if self.method == "zscore":
                 normalized = (image - mean) / std
 
-            else:
+            elif self.method == "two_sigma_stretch":
                 normalized = (
                     (image - (mean - 2 * std))
                     / (4 * std)
@@ -198,7 +201,7 @@ class NormalizeFromStats:
                     )
 
             # Fill invalid pixels with zero after
-            # normalization, not before estimating stats.
+            # normalization.
             result[modality] = torch.where(
                 valid,
                 normalized,
