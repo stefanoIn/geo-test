@@ -28,8 +28,12 @@ head:
 preprocessing:
   normalization:
     method: two_sigma_stretch
-    stats_file: configs/statistics/sen1floods11_train.yaml
+    statistics: training_dataset
     use_8_bit: false
+
+  band_indices:
+    sar: [0, 1]
+    optical: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12]
 
   crop_size: 120
 

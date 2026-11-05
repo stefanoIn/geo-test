@@ -1,4 +1,4 @@
-from src.data.sen1floods11 import Sen1Floods11Dataset
+from src.data.datasets.sen1floods11 import Sen1Floods11Dataset
 # from src.data.so2sat import So2SatDataset  # Later
 
 

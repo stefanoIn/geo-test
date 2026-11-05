@@ -13,7 +13,7 @@ from torch.utils.data import Dataset
 # Assumes this file is located at:
 # GeoTest/src/data/sen1floods11.py
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 DATASET_ROOT = PROJECT_ROOT / "data" / "sen1floods11"
 
