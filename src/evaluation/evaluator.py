@@ -40,6 +40,7 @@ def evaluate(
     ignore_index: int = 255,
     tile_size=None,
     tile_batch_size: int = 8,
+    stride=None,
     input_keys=None,
     target_key: str = "target",
     return_per_sample: bool = False,
@@ -111,7 +112,7 @@ def evaluate(
                 model(images)
                 if tile_size is None
                 else sliding_window_predict(
-                    model, images, tile_size=tile_size, tile_batch_size=tile_batch_size
+                    model, images, tile_size=tile_size, tile_batch_size=tile_batch_size, stride=stride
                 )
             )
             expected = (targets.shape[0], num_classes, *targets.shape[-2:])

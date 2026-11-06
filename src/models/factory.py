@@ -1,0 +1,90 @@
+"""Construct a dense-prediction model from YAML config. No dataset-specific logic."""
+
+from pathlib import Path
+
+from src.adapters.token_to_spatial import TokenToSpatial
+from src.heads.fcn import FCNHead
+from src.models.dense_prediction import DensePredictionModel
+
+
+def build_model(config: dict, project_root=".") -> DensePredictionModel:
+    """Create encoder, spatial adapter and task head; checkpoint paths are root-relative.
+
+    No data loading or preprocessing happens here. The selected model must
+    receive correctly normalised tensors from the dataset pipeline.
+    """
+    mc = config["model"]
+    ac = config["adapter"]
+    hc = config["head"]
+    name = mc["name"].lower()
+
+    path = Path(mc["checkpoint"]).expanduser()
+    if not path.is_absolute():
+        path = Path(project_root) / path
+
+    if name == "croma":
+        from src.encoders.croma.croma import CROMAEncoder
+
+        modality = mc.get("modality", "both")
+        expected_inputs = {
+            "SAR": {"sar"},
+            "optical": {"optical"},
+            "both": {"sar", "optical"},
+        }
+        if modality not in expected_inputs:
+            raise ValueError(f"Unsupported CROMA modality: {modality!r}")
+        if "dataset" in config and set(config["dataset"]["modalities"]) != expected_inputs[modality]:
+            raise ValueError("CROMA model modality and dataset modalities disagree")
+        encoder = CROMAEncoder(
+            checkpoint_path=path,
+            size=mc.get("size", "large"),
+            modality=modality,
+            image_resolution=mc.get("image_resolution", 120),
+            freeze=mc.get("freeze_encoder", True),
+        )
+
+    elif name in {"terramind_v1_base", "terramind_v1_large"}:
+        from src.encoders.terramind.terramind import TerraMindEncoder
+
+        name_size = name.removeprefix("terramind_v1_")
+        size = mc.get("size", name_size)
+        if size != name_size:
+            raise ValueError(f"Model name {name!r} disagrees with size {size!r}")
+        native_modalities = mc["modalities"]
+        mapping = mc.get("input_mapping")
+        if "dataset" in config:
+            expected_keys = set(mapping) if mapping else set(native_modalities)
+            if set(config["dataset"]["modalities"]) != expected_keys:
+                raise ValueError("TerraMind input_mapping and dataset modalities disagree")
+        encoder = TerraMindEncoder(
+            checkpoint_path=path,
+            size=size,
+            modalities=native_modalities,
+            input_mapping=mapping,
+            merge_method=mc.get("merge_method", "mean"),
+            freeze=mc.get("freeze_encoder", True),
+        )
+        expected_channels = encoder.backbone.out_channels[-1]
+        if hc["in_channels"] != expected_channels:
+            raise ValueError(
+                f"TerraMind produces {expected_channels} channels with this merge_method, "
+                f"but head.in_channels={hc['in_channels']}"
+            )
+
+    else:
+        raise ValueError(f"Unknown encoder model: {mc['name']!r}")
+
+    if ac["name"] != "token_to_spatial":
+        raise ValueError(f"Unknown feature adapter: {ac['name']!r}")
+    adapter = TokenToSpatial(
+        feature_key=ac.get("feature_key", "tokens"),
+        grid_size=ac.get("grid_size"),
+    )
+
+    if hc["name"] != "fcn":
+        raise ValueError(f"Unknown prediction head: {hc['name']!r}")
+    head = FCNHead(
+        in_channels=hc["in_channels"],
+        num_classes=hc["num_classes"],
+    )
+    return DensePredictionModel(encoder=encoder, adapter=adapter, head=head)

@@ -1,106 +1,97 @@
-"""Sliding-window inference for dense, spatial predictions."""
+"""Sliding-window inference for spatial predictions, averaging overlap logits."""
 
 import math
+
 import torch
 
 
+def _pair(value, label):
+    if type(value) is int:
+        value = (value, value)
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise ValueError(f"{label} must be an integer or (height, width)")
+    if any(type(v) is not int or v <= 0 for v in value):
+        raise ValueError(f"{label} must contain positive integers")
+    return tuple(value)
+
+
+def _starts(length, tile, stride):
+    last = length - tile
+    if stride is None:
+        # Backwards-compatible behaviour of the original implementation.
+        return torch.linspace(0, last, math.ceil(length / tile)).round().long().tolist()
+    starts = list(range(0, last + 1, stride))
+    if starts[-1] != last:
+        starts.append(last)  # Force coverage of the far edge.
+    return starts
+
+
 @torch.inference_mode()
-def sliding_window_predict(model, images, tile_size, tile_batch_size=8):
-    """Predict a full image by averaging predictions from overlapping tiles.
+def sliding_window_predict(model, images, tile_size, tile_batch_size=8, stride=None):
+    """Return averaged logits [B,C,H,W] from aligned image modalities.
 
-    Args:
-        model: Model accepting a dict of batched modalities and returning
-            spatial predictions [B, C_out, tile_h, tile_w]. Set model.eval()
-            before calling this function.
-        images: Dictionary of aligned image tensors [B, C, H, W].
-        tile_size: Integer or (height, width) of the model's input window.
-        tile_batch_size: Maximum number of tiles passed to the model at once.
-
-    Returns:
-        Float32 predictions [B, C_out, H, W]. For segmentation, these are
-        logits, not class labels. The caller computes task-specific metrics.
-
-    Raises:
-        ValueError: If input shapes, tile sizes, or predictions are invalid.
+    `stride` sets the step between windows; e.g. tile_size=120, stride=60
+    matches the overlapping windows used in the original experiments.
+    If omitted, preserves the older evenly-spaced implementation.
     """
-    if isinstance(tile_size, int):
-        tile_h = tile_w = tile_size
-    elif isinstance(tile_size, (tuple, list)) and len(tile_size) == 2:
-        tile_h, tile_w = tile_size
+    tile_h, tile_w = _pair(tile_size, "tile_size")
+    if stride is not None:
+        stride_h, stride_w = _pair(stride, "stride")
+        if stride_h > tile_h or stride_w > tile_w:
+            raise ValueError("stride must be <= tile_size to cover the whole image")
     else:
-        raise ValueError("tile_size must be an int or (height, width)")
-
-    if (not isinstance(tile_h, int) or not isinstance(tile_w, int)
-            or tile_h <= 0 or tile_w <= 0):
-        raise ValueError("Tile dimensions must be positive integers")
-    if not isinstance(tile_batch_size, int) or tile_batch_size <= 0:
+        stride_h = stride_w = None
+    if type(tile_batch_size) is not int or tile_batch_size <= 0:
         raise ValueError("tile_batch_size must be a positive integer")
     if not isinstance(images, dict) or not images:
-        raise ValueError("images must be a non-empty dictionary")
+        raise ValueError("images must be a non-empty dict")
 
     first = next(iter(images.values()))
     if not isinstance(first, torch.Tensor) or first.ndim != 4:
-        raise ValueError("Each modality must be a tensor [B, C, H, W]")
+        raise ValueError("Image modalities must be [B,C,H,W] tensors")
     batch_size, _, height, width = first.shape
     if batch_size == 0:
-        raise ValueError("Batch size must be greater than zero")
-
+        raise ValueError("Empty batch")
     for name, tensor in images.items():
         if (not isinstance(tensor, torch.Tensor) or tensor.ndim != 4
-                or tensor.shape[0] != batch_size
-                or tensor.shape[-2:] != (height, width)
+                or tensor.shape[0] != batch_size or tensor.shape[-2:] != (height, width)
                 or tensor.device != first.device):
-            raise ValueError(f"{name}: incompatible shape or device")
-
+            raise ValueError(f"{name}: inconsistent shape or device")
     if tile_h > height or tile_w > width:
-        raise ValueError("Tile size exceeds image size")
+        raise ValueError("tile_size exceeds image spatial size")
 
-    # Evenly distribute windows from the first to the last valid position.
-    # This covers the full image and permits overlap at image boundaries.
-    top_positions = torch.linspace(
-        0, height - tile_h, math.ceil(height / tile_h)
-    ).round().long().tolist()
-    left_positions = torch.linspace(
-        0, width - tile_w, math.ceil(width / tile_w)
-    ).round().long().tolist()
+    tops = _starts(height, tile_h, stride_h)
+    lefts = _starts(width, tile_w, stride_w)
+    locations = [(b, top, left) for b in range(batch_size) for top in tops for left in lefts]
 
-    locations = [
-        (b, top, left)
-        for b in range(batch_size)
-        for top in top_positions
-        for left in left_positions
-    ]
-
-    predictions = None
-    counts = torch.zeros((batch_size, 1, height, width),
-                         device=first.device, dtype=torch.float32)
-
+    logits_sum = None
+    counts = torch.zeros((batch_size, 1, height, width), device=first.device, dtype=torch.float32)
     for start in range(0, len(locations), tile_batch_size):
-        selected = locations[start:start + tile_batch_size]
+        locations_chunk = locations[start:start + tile_batch_size]
         tiles = {
             name: torch.stack([
                 tensor[b, :, top:top + tile_h, left:left + tile_w]
-                for b, top, left in selected
-            ])
-            for name, tensor in images.items()
+                for b, top, left in locations_chunk
+            ]) for name, tensor in images.items()
         }
-        output = model(tiles)
-        if (not isinstance(output, torch.Tensor) or output.ndim != 4
-                or output.shape[0] != len(selected)
-                or output.shape[-2:] != (tile_h, tile_w)
-                or output.shape[1] == 0):
-            raise ValueError("Model must return [tile_batch, C_out, tile_h, tile_w]")
-
-        if predictions is None:
-            predictions = torch.zeros(
-                (batch_size, output.shape[1], height, width),
-                device=output.device, dtype=torch.float32,
+        logits = model(tiles)
+        if (not isinstance(logits, torch.Tensor) or logits.ndim != 4
+                or logits.shape[0] != len(locations_chunk)
+                or logits.shape[-2:] != (tile_h, tile_w)
+                or logits.shape[1] <= 0):
+            raise ValueError("Model must return logits [tile_batch,C,tile_h,tile_w]")
+        if logits_sum is None:
+            logits_sum = torch.zeros(
+                (batch_size, logits.shape[1], height, width),
+                device=logits.device, dtype=torch.float32,
             )
-        elif output.shape[1] != predictions.shape[1]:
-            raise ValueError("Model output channel count changed between tiles")
+        elif logits.shape[1] != logits_sum.shape[1]:
+            raise ValueError("Output channel count changed between windows")
 
-        for i, (b, top, left) in enumerate(selected):
-            predictions[b, :, top:top + tile_h, left:left + tile_w] += output[i].float()
+        for idx, (b, top, left) in enumerate(locations_chunk):
+            logits_sum[b, :, top:top + tile_h, left:left + tile_w] += logits[idx].float()
             counts[b, :, top:top + tile_h, left:left + tile_w] += 1
 
-    return predictions / counts
+    if not bool((counts > 0).all()):
+        raise RuntimeError("Sliding windows did not cover every pixel")
+    return logits_sum / counts

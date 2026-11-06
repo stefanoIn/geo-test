@@ -1,0 +1,72 @@
+experiment:
+  name: terramind_v1_large_s1_fcn_all_hand_labels
+  seed: 234
+
+dataset:
+  name: sen1floods11
+  modalities: [sar]
+  train_csv: data/sen1floods11/splits/all_hand_labels/flood_train_data.csv
+  val_csv: data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv
+  test_csv: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv
+  bolivia_csv: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv
+
+model:
+  name: terramind_v1_large
+  size: large
+  checkpoint: pretrained_models/TerraMind_v1_large.pt
+  modalities: [S1GRD]
+  input_mapping:
+    sar: S1GRD
+  merge_method: mean
+  freeze_encoder: true
+
+adapter:
+  name: token_to_spatial
+  feature_key: tokens
+  grid_size: null
+
+head:
+  name: fcn
+  in_channels: 1024
+  num_classes: 2
+
+preprocessing:
+  normalization:
+    method: two_sigma_stretch
+    statistics: training_dataset
+    use_8_bit: false
+  band_indices:
+    sar: [0, 1]
+  crop_size: 120
+
+training:
+  epochs: 100
+  batch_size: 1  # Conservative default for an 8GB VRAM GPU; adjust after profiling.
+  num_workers: 0
+  loss:
+    name: cross_entropy
+    ignore_index: 255
+    class_weights: [1.0, 8.0]
+  optimizer:
+    name: adamw
+    learning_rate: 0.0005
+    weight_decay: 0.01
+  scheduler:
+    name: cosine_annealing_warm_restarts
+    t0_epochs: 10
+    t_mult: 2
+    eta_min: 0.0
+
+evaluation:
+  batch_size: 1
+  tile_size: 120
+  stride: 60
+  tile_batch_size: 1
+  class_names: [non_water, water]
+  return_per_sample: true
+  sample_id_key: chip_id
+  checkpoint_metric: iou
+  checkpoint_class: 1
+
+output:
+  directory: runs/sen1floods11/terramind/fcn_s1

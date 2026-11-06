@@ -5,7 +5,6 @@ experiment:
 dataset:
   name: sen1floods11
   modalities: [sar, optical]
-
   train_csv: data/sen1floods11/splits/all_hand_labels/flood_train_data.csv
   val_csv: data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv
   test_csv: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv
@@ -14,16 +13,15 @@ dataset:
 model:
   name: croma
   size: large
-  checkpoint: pretrained_models/CROMA_large.pt
+  checkpoint: pretrained_models/croma/CROMA_large.pt
   modality: both
-  feature_output: joint_encodings
   image_resolution: 120
   freeze_encoder: true
 
 adapter:
   name: token_to_spatial
   feature_key: tokens
-  grid_size: null  # Automatically infer square grid (15x15 for CROMA at 120px)
+  grid_size: null
 
 head:
   name: fcn
@@ -35,28 +33,40 @@ preprocessing:
     method: two_sigma_stretch
     statistics: training_dataset
     use_8_bit: false
-
   band_indices:
     sar: [0, 1]
+    # CROMA expects 12 S2 bands; drop B10 from Sen1Floods11 L1C.
     optical: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12]
-
   crop_size: 120
 
 training:
   epochs: 100
   batch_size: 8
   num_workers: 0
-
+  loss:
+    name: cross_entropy
+    ignore_index: 255
+    class_weights: [1.0, 8.0]
   optimizer:
     name: adamw
     learning_rate: 0.0005
     weight_decay: 0.01
+  scheduler:
+    name: cosine_annealing_warm_restarts
+    t0_epochs: 10  # Converted to batches: T_0 = len(train_loader) * 10
+    t_mult: 2
+    eta_min: 0.0
 
 evaluation:
   batch_size: 1
   tile_size: 120
-  tile_batch_size: 8
-  checkpoint_metric: miou
+  stride: 60   # Overlapping windows like the original training notebooks
+  tile_batch_size: 1
+  class_names: [non_water, water]
+  return_per_sample: true
+  sample_id_key: chip_id
+  checkpoint_metric: iou
+  checkpoint_class: 1  # Select best checkpoint on water IoU (not test IoU)
 
 output:
   directory: runs/sen1floods11/croma/fcn_s1s2
