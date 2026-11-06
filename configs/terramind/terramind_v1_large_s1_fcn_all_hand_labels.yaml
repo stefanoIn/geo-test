@@ -43,6 +43,7 @@ training:
   epochs: 100
   batch_size: 1  # Conservative default for an 8GB VRAM GPU; adjust after profiling.
   num_workers: 0
+  validate_every: 10
   loss:
     name: cross_entropy
     ignore_index: 255

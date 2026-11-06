@@ -1,0 +1,36 @@
+{
+  "seed": 234,
+  "modalities": [
+    "sar",
+    "optical"
+  ],
+  "croma_modality": "both",
+  "pretrained_path": "pretrained_models\\CROMA_large.pt",
+  "encoder_size": "large",
+  "freeze_encoder": true,
+  "crop_size": 120,
+  "batch_size": 8,
+  "epochs": 100,
+  "validate_every": 10,
+  "learning_rate": 0.0005,
+  "weight_decay": 0.01,
+  "class_weights": [
+    1.0,
+    8.0
+  ],
+  "ignore_index": 255,
+  "scheduler": {
+    "name": "cosine_annealing_warm_restarts",
+    "t0_epochs": 10,
+    "t_mult": 2,
+    "eta_min": 0.0
+  },
+  "evaluation_tile_size": 120,
+  "evaluation_stride": 60,
+  "split_paths": {
+    "train": "data\\sen1floods11\\splits\\all_hand_labels\\flood_train_data.csv",
+    "val": "data\\sen1floods11\\splits\\all_hand_labels\\flood_valid_data.csv",
+    "test": "data\\sen1floods11\\splits\\all_hand_labels\\flood_test_data.csv",
+    "bolivia": "data\\sen1floods11\\splits\\all_hand_labels\\flood_bolivia_data.csv"
+  }
+}

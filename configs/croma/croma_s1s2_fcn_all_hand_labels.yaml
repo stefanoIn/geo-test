@@ -13,7 +13,8 @@ dataset:
 model:
   name: croma
   size: large
-  checkpoint: pretrained_models/croma/CROMA_large.pt
+  checkpoint: pretrained_models/CROMA_large.pt
+
   modality: both
   image_resolution: 120
   freeze_encoder: true
@@ -43,6 +44,7 @@ training:
   epochs: 100
   batch_size: 8
   num_workers: 0
+  validate_every: 10
   loss:
     name: cross_entropy
     ignore_index: 255
