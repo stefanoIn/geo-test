@@ -16,7 +16,7 @@ import torch
 from torch import nn
 
 
-WRAPPER = Path(__file__).resolve().parents[1] / "src/encoders/terramind/terramind.py"
+WRAPPER = Path("src/encoders/terramind/terramind.py")
 CHANNELS = {"S1GRD": 2, "S1RTC": 2, "S2L1C": 13, "S2L2A": 12, "RGB": 3, "DEM": 1}
 
 

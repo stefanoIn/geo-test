@@ -1,12 +1,12 @@
-﻿# GeoTest offline experiment manual
+# GeoTest offline experiment manual
 
 Reviewed: 6 November 2026. This manual explains how the current modules fit together and includes a complete reference runner. No training, dependency installation or source-code changes were performed to create this document.
 
 ## 1. Prepare the offline environment
 
+Open a terminal in the project folder and select your existing Python environment. All commands below are run from that folder; no specific drive, username or installation location is required. If your environment is stored locally as `.venv`, you can activate it with `.\.venv\Scripts\Activate.ps1` on Windows. Otherwise activate your environment through your IDE or environment manager.
+
 ```powershell
-cd D:\UNI\GeoTest
-& D:\UNI\THESIS\.venv\Scripts\Activate.ps1
 python -c "import sys, torch; print(sys.executable); print(torch.__version__); print(torch.cuda.is_available())"
 ```
 
@@ -48,7 +48,7 @@ YAML -> Dataset -> normalization + shared training crop -> DataLoader
 | src/data/statistics.py | get_or_compute_stats(...); cache statistics from raw training images |
 | src/data/preprocessing.py | NormalizeFromStats.from_config(config, training_statistics=None) |
 | src/data/transforms.py | random_crop(sample, size); identical crop for all images and target |
-| src/models/factory.py | build_model(config, project_root); builds encoder, adapter and FCN |
+| src/models/factory.py | build_model(config); builds encoder, adapter and FCN |
 | src/encoders/croma/croma.py | SAR, optical or joint CROMA tokens |
 | src/encoders/terramind/terramind.py | Product mapping, TerraMind tokens and padded_size metadata |
 | src/adapters/token_to_spatial.py | [B,N,D] -> [B,D,grid_h,grid_w] |
@@ -67,8 +67,7 @@ A sample contains sar [2,H,W] and/or optical [13,H,W] before band selection, tar
 ```python
 from pathlib import Path
 import yaml
-root = Path(r"D:\UNI\GeoTest")
-path = root / "configs/terramind/terramind_v1_large_s1_fcn_all_hand_labels.yaml"
+path = Path("configs/terramind/terramind_v1_large_s1_fcn_all_hand_labels.yaml")
 with path.open(encoding="utf-8") as file:
     config = yaml.safe_load(file)
 print(config["model"]["name"])
@@ -95,6 +94,8 @@ This fragment belongs inside a complete experiment configuration. It is not stan
 from src.data.preprocessing import NormalizeFromStats
 normalizer = NormalizeFromStats.from_config(config)
 ```
+
+Relative paths are interpreted from the terminal working directory. Run the examples from the project folder, rather than from reports/ or src/.
 
 The mapping selects fixed values from TERRAMIND_STATS in preprocessing.py. Use the same normalizer for all splits. For statistics: training_dataset, first call get_or_compute_stats on raw training data, then pass the result as training_statistics. Never estimate these statistics from test/validation imagery. The full example includes both branches.
 
@@ -136,14 +137,6 @@ from src.evaluation.evaluator import evaluate, save_evaluation_report
 from training.trainer import train_one_epoch
 from training.checkpoints import save_checkpoint, load_checkpoint
 
-ROOT = Path(__file__).resolve().parent
-
-
-def resolve(path):
-    path = Path(path).expanduser()
-    return path if path.is_absolute() else ROOT / path
-
-
 def read_yaml(path):
     with Path(path).open(encoding="utf-8") as file:
         return yaml.safe_load(file)
@@ -173,7 +166,7 @@ class TrainPreprocess:
 
 def make_dataset(config, split, preprocess=None, modalities=None):
     return Sen1Floods11Dataset(
-        split_csv=resolve(config["dataset"][f"{split}_csv"]),
+        split_csv=Path(config["dataset"][f"{split}_csv"]),
         modalities=modalities or tuple(config["dataset"]["modalities"]),
         preprocess_func=preprocess,
     )
@@ -185,9 +178,9 @@ def prepare_normalizer(config):
         statistics = get_or_compute_stats(
             dataset_factory=lambda modalities: make_dataset(config, "train", modalities=modalities),
             modalities=config["dataset"]["modalities"],
-            split_csv=resolve(config["dataset"]["train_csv"]),
+            split_csv=Path(config["dataset"]["train_csv"]),
             dataset_name=config["dataset"]["name"],
-            cache_dir=ROOT / "data/statistics",
+            cache_dir=Path("data/statistics"),
         )
     return NormalizeFromStats.from_config(config, training_statistics=statistics)
 
@@ -297,9 +290,9 @@ def main():
         parser.error("Provide exactly one of --config or --evaluate-run")
     training = args.evaluate_run is None
     if training:
-        config = read_yaml(resolve(args.config))
+        config = read_yaml(Path(args.config))
     else:
-        run_dir = resolve(args.evaluate_run)
+        run_dir = Path(args.evaluate_run)
         config = read_yaml(run_dir / "config.yaml")
     if config["dataset"]["name"] != "sen1floods11":
         raise ValueError("This reference data pipeline implements Sen1Floods11 only")
@@ -316,12 +309,12 @@ def main():
         saved = json.loads((run_dir / "normalization.json").read_text())
         normalizer = NormalizeFromStats(**saved)
     loaders = make_loaders(config, normalizer, training)
-    model = build_model(config, project_root=ROOT).to(device)
+    model = build_model(config).to(device)
     criterion = make_loss(config, device)
 
     if training:
         tag = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:8]
-        run_dir = resolve(config["output"]["directory"]) / tag
+        run_dir = Path(config["output"]["directory"]) / tag
         run_dir.mkdir(parents=True, exist_ok=False)
         (run_dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
         write_json(run_dir / "normalization.json", dict(
@@ -329,9 +322,9 @@ def main():
             band_indices=normalizer.band_indices, use_8_bit=normalizer.use_8_bit,
         ))
         write_json(run_dir / "provenance.json", {
-            "pretrained_path": str(resolve(config["model"]["checkpoint"])),
-            "pretrained_sha256": sha256(resolve(config["model"]["checkpoint"])),
-            "splits": {split: sha256(resolve(config["dataset"][f"{split}_csv"]))
+            "pretrained_path": str(Path(config["model"]["checkpoint"])),
+            "pretrained_sha256": sha256(Path(config["model"]["checkpoint"])),
+            "splits": {split: sha256(Path(config["dataset"][f"{split}_csv"]))
                        for split in loaders},
             "seed": seed,
         })
@@ -376,10 +369,10 @@ def main():
 
     provenance = json.loads((run_dir / "provenance.json").read_text())
     if not training:
-        if sha256(resolve(config["model"]["checkpoint"])) != provenance["pretrained_sha256"]:
+        if sha256(Path(config["model"]["checkpoint"])) != provenance["pretrained_sha256"]:
             raise ValueError("Pretrained weights changed since training")
         for split in loaders:
-            if sha256(resolve(config["dataset"][f"{split}_csv"])) != provenance["splits"].get(split):
+            if sha256(Path(config["dataset"][f"{split}_csv"])) != provenance["splits"].get(split):
                 raise ValueError(f"The {split} split changed since training")
     checkpoint = run_dir / "checkpoints/best.pt"
     if not checkpoint.is_file():
@@ -436,7 +429,7 @@ These fields are interpreted by the modules and the reference runner. YAML does 
 | dataset.name | sen1floods11 in this runner |
 | dataset.modalities | [sar], [optical], or [sar, optical] |
 | dataset.train_csv / val_csv / test_csv / bolivia_csv | Local split paths |
-| model.checkpoint | Local pretrained file, absolute or project-relative |
+| model.checkpoint | Project-relative pretrained file, e.g. pretrained_models/CROMA_large.pt |
 | model.freeze_encoder | true: train head; false: train encoder and head |
 | adapter.name | token_to_spatial only |
 | adapter.feature_key | tokens |
@@ -588,6 +581,8 @@ For epoch-stepped schedulers, pass scheduler=None to train_one_epoch and call sc
 Reduce training.batch_size for training memory; reduce evaluation.tile_batch_size for inference memory. Changing crop size also changes spatial context and is a scientific protocol change. TerraMind's 120 -> 128 padding does not rescale the observation. If using 128 for both models, also update CROMA image_resolution and evaluation.tile_size, and choose stride deliberately.
 
 ## 8. Saved results and metric interpretation
+
+Use relative paths in YAML and command arguments so the example also records relative paths in its reports. Internal code may resolve paths locally, but that does not require publishing machine-specific paths.
 
 The example creates:
 

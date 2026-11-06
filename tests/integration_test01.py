@@ -23,12 +23,11 @@ from src.heads.fcn import FCNHead
 from src.models.dense_prediction import DensePredictionModel
 
 
-ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
     # 1. Load experiment configuration
-    config_path = ROOT / "configs/croma/croma_s1s2_fcn_all_hand_labels.yaml"
+    config_path = Path("configs/croma/croma_s1s2_fcn_all_hand_labels.yaml")
 
     with config_path.open("r") as file:
         cfg = yaml.safe_load(file)
@@ -45,7 +44,7 @@ def main():
 
     # 2. Construct the encoder
     encoder_cfg = cfg["model"]
-    checkpoint = ROOT / encoder_cfg["checkpoint"]
+    checkpoint = Path(encoder_cfg["checkpoint"])
 
     if not checkpoint.is_file():
         raise FileNotFoundError(f"Missing checkpoint: {checkpoint}")

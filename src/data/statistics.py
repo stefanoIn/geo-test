@@ -206,7 +206,7 @@ def get_or_compute_stats(
         )
     """
 
-    split_path = Path(split_csv).resolve()
+    split_path = Path(split_csv)
 
     if not split_path.is_file():
         raise FileNotFoundError(split_path)
@@ -266,7 +266,7 @@ def get_or_compute_stats(
                     "in dataset.data_list"
                 )
 
-            image_path = Path(paths[modality]).resolve()
+            image_path = Path(paths[modality])
 
             file_stat = image_path.stat()
 

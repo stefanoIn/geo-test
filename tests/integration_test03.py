@@ -25,9 +25,8 @@ from src.heads.fcn import FCNHead
 from src.models.dense_prediction import DensePredictionModel
 
 
-ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = (
-    ROOT / "configs/terramind/terramind_v1_large_s1_fcn_all_hand_labels.yaml"
+    Path("configs/terramind/terramind_v1_large_s1_fcn_all_hand_labels.yaml")
 )
 # Only the *test data* are specialised here. TerraMindEncoder remains
 # dataset-agnostic and receives native modality names + a mapping from input
@@ -61,8 +60,6 @@ def main():
     args = parser.parse_args()
 
     config_path = args.config
-    if not config_path.is_absolute():
-        config_path = ROOT / config_path
     with config_path.open("r", encoding="utf-8") as handle:
         cfg = yaml.safe_load(handle)
 
@@ -85,8 +82,6 @@ def main():
         raise ValueError("input size and batch size must be positive")
 
     checkpoint = Path(mc["checkpoint"])
-    if not checkpoint.is_absolute():
-        checkpoint = ROOT / checkpoint
 
     print("\n" + "=" * 74)
     print(f"TerraMind integration test | case: {args.modality}")

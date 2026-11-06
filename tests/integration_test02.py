@@ -1,11 +1,13 @@
 
 """Smoke test: real Sen1Floods11 training crop and full-image validation."""
 
+from pathlib import Path
+
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from run import PROJECT_ROOT, build_dataset, build_preprocessing, load_config
+from run import build_dataset, build_preprocessing, load_config
 from src.adapters.token_to_spatial import TokenToSpatial
 from src.data.transforms import random_crop
 from src.encoders.croma.croma import CROMAEncoder
@@ -54,7 +56,7 @@ def main():
 
     # 2. Build the complete model.
     encoder_cfg = cfg["model"]
-    checkpoint = PROJECT_ROOT / encoder_cfg["checkpoint"]
+    checkpoint = Path(encoder_cfg["checkpoint"])
 
     if not checkpoint.is_file():
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint}")

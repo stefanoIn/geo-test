@@ -6,8 +6,8 @@ import rasterio
 import torch
 from torch.utils.data import Dataset
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DATASET_ROOT = PROJECT_ROOT / "data" / "sen1floods11"
+# Run commands from the project folder; paths are relative to that folder.
+DATASET_ROOT = Path("data/sen1floods11")
 HAND_DIR = DATASET_ROOT / "HandLabeled"
 SPLITS_DIR = DATASET_ROOT / "splits"
 
@@ -18,8 +18,6 @@ def load_split_paths(split_csv, modalities=("sar", "optical")):
     if not modalities or set(modalities) - {"sar", "optical"} or len(set(modalities)) != len(modalities):
         raise ValueError(f"Invalid modalities: {modalities}")
     split_csv = Path(split_csv)
-    if not split_csv.is_absolute():
-        split_csv = PROJECT_ROOT / split_csv
     if not split_csv.is_file():
         raise FileNotFoundError(split_csv)
 

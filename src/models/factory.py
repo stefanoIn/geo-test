@@ -7,8 +7,8 @@ from src.heads.fcn import FCNHead
 from src.models.dense_prediction import DensePredictionModel
 
 
-def build_model(config: dict, project_root=".") -> DensePredictionModel:
-    """Create encoder, spatial adapter and task head; checkpoint paths are root-relative.
+def build_model(config: dict) -> DensePredictionModel:
+    """Create encoder, spatial adapter and task head; paths are relative to the working directory.
 
     No data loading or preprocessing happens here. The selected model must
     receive correctly normalised tensors from the dataset pipeline.
@@ -19,8 +19,6 @@ def build_model(config: dict, project_root=".") -> DensePredictionModel:
     name = mc["name"].lower()
 
     path = Path(mc["checkpoint"]).expanduser()
-    if not path.is_absolute():
-        path = Path(project_root) / path
 
     if name == "croma":
         from src.encoders.croma.croma import CROMAEncoder
