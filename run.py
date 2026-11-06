@@ -21,7 +21,7 @@ from training.trainer import train_one_epoch
 from training.checkpoints import save_checkpoint, load_checkpoint
 from utils import (
     load_config, build_dataset, build_preprocessing, build_loaders,
-    build_loss, build_optimizer, build_scheduler, file_sha256, write_json,
+    build_loss, build_optimizer, build_scheduler, file_sha256, write_json, build_run_summary,
 )
 
 # Select the experiment here; paths are relative to the project folder.
@@ -139,6 +139,8 @@ def run_experiment(config_path=CONFIG_PATH, device=None):
         history.append(row)
         
         write_json(run_dir / "metrics/history.json", history)
+        # A compact overview stays available even before training finishes.
+        write_json(run_dir / "summary.json", build_run_summary(config, history))
         
         message = f"Epoch {epoch:03d}/{epochs} | LR {lr_start:.2e} | Train loss {loss:.4f}"
         if validation is not None:
@@ -151,6 +153,9 @@ def run_experiment(config_path=CONFIG_PATH, device=None):
     # Replace the final-epoch weights with the validation-selected weights.
     selected = load_checkpoint(best_path, model, map_location=device)
     checkpoint_hash = file_sha256(best_path)
+    evaluations = {}
+    write_json(run_dir / "summary.json", build_run_summary(
+        config, history, evaluations, checkpoint_hash))
     
     # Report the two held-out splits separately, linked to the evaluated checkpoint.
     for split in ("test", "bolivia"):
@@ -163,6 +168,10 @@ def run_experiment(config_path=CONFIG_PATH, device=None):
                 "selected_epoch": selected["epoch"], "seed": seed,
             })
             
+            evaluations[split] = results
+            write_json(run_dir / "summary.json", build_run_summary(
+                config, history, evaluations, checkpoint_hash))
+
             print(f"{split}: mIoU={results['miou']}, water IoU={results['iou_per_class'][1]}")
             if "aw_pw_fw" in results:
                 for category, values in results["aw_pw_fw"]["summary"].items():

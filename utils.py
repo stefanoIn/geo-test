@@ -248,3 +248,56 @@ def write_json(path, data):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, allow_nan=False), encoding="utf-8")
+
+
+# Summarize recorded results only; never select checkpoints using test scores.
+def build_run_summary(config, history, evaluations=None, checkpoint_sha256=None):
+    options = config["evaluation"]
+    selection_metric = options.get("checkpoint_metric", "miou")
+    selection_class = options.get("checkpoint_class", 1) if selection_metric == "iou" else None
+    validated = [row for row in history if row.get("validation") is not None]
+
+    def peak(metric, class_id=None):
+        candidates = []
+        for row in validated:
+            metrics = row["validation"]
+            value = metrics["iou_per_class"][class_id] if metric == "iou" else metrics[metric]
+            if value is not None:
+                candidates.append((row, value))
+        if not candidates:
+            return None
+        # max keeps the first tied epoch, matching the trainer's strict > rule.
+        row, value = max(candidates, key=lambda item: item[1])
+        return {"epoch": row["epoch"], "value": value}
+
+    selected = peak(selection_metric, selection_class)
+    best_checkpoint = None
+    if selected is not None:
+        row = next(row for row in validated if row["epoch"] == selected["epoch"])
+        best_checkpoint = {
+            "path": "checkpoints/best.pt", "sha256": checkpoint_sha256,
+            "epoch": selected["epoch"], "selection_split": "val",
+            "selection_metric": selection_metric, "selection_class": selection_class,
+            "selection_value": selected["value"], "train_loss": row["train_loss"],
+            "validation": row["validation"],
+        }
+    return {
+        "experiment": config["experiment"], "model": config["model"]["name"],
+        "modalities": config["dataset"]["modalities"],
+        "training": {
+            "epochs_requested": config["training"]["epochs"],
+            "epochs_completed": history[-1]["epoch"] if history else 0,
+            "validate_every": config["training"].get("validate_every", 5),
+            "last_train_loss": history[-1]["train_loss"] if history else None,
+            "minimum_train_loss": min((row["train_loss"] for row in history), default=None),
+            "history_path": "metrics/history.json",
+        },
+        "best_validation_observed": {
+            "miou": peak("miou"), "water_iou": peak("iou", 1),
+        },
+        "best_checkpoint": best_checkpoint,
+        "evaluation_of_best_checkpoint": {
+            split: {key: value for key, value in results.items() if key != "per_sample"}
+            for split, results in (evaluations or {}).items()
+        },
+    }

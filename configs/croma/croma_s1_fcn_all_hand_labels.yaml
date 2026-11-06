@@ -15,7 +15,7 @@ model:
   size: large
   checkpoint: pretrained_models/CROMA_large.pt
 
-  modality: both
+  modality: SAR
   image_resolution: 120
   freeze_encoder: true
 
@@ -61,3 +61,15 @@ training:
 
 evaluation: 
   aw_pw_fw: true
+  batch_size: 1
+  tile_size: 120
+  stride: 60
+  tile_batch_size: 1
+  class_names: [non_water, water]
+  return_per_sample: true
+  sample_id_key: chip_id
+  checkpoint_metric: iou
+  checkpoint_class: 1
+
+output:
+  directory: runs/sen1floods11/croma/fcn_s1
