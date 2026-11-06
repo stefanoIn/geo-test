@@ -527,7 +527,15 @@ print("Chips with defined water IoU:", len(chip_values))
 
 The binary confusion matrix is [[TN,FP],[FN,TP]], with target classes as rows. Water IoU is TP/(TP+FP+FN). mIoU averages the defined water/non-water IoUs. Mean per-chip water IoU averages individual chip ratios, so it is different from pooled water IoU. Undefined ratios are None/null, not automatically zero.
 
-Omission/commission are derived here rather than emitted directly by the module. AW/PW/FW evaluation is not implemented by this generic pipeline: it needs the appropriate permanent/flood-water reference masks. The current dataset does not supply those to the evaluator.
+Omission/commission are derived here rather than emitted directly by the module.
+
+For Sen1Floods11 AW (all water), PW (permanent water), and FW (flood water), add `aw_pw_fw: true` under `evaluation` in YAML. `run.py` automatically loads the matching `HandLabeled/JRCWaterHand` masks for validation, test and Bolivia. Omit the setting or use `false` to disable it. The reference masks are never model inputs.
+
+When assembling the experiment manually, pass `include_permanent_water=True` to the evaluation datasets and `aw_pw_fw=True` to `evaluate(...)`. Training datasets do not need the masks. Set both arguments from `config["evaluation"].get("aw_pw_fw", False)`.
+
+Reports contain `aw_pw_fw.summary.AW`, `.PW`, and `.FW`, each with `mean_chip_iou`, `total_iou` (pooled IoU), TP/FP/FN/TN, and included/excluded chip counts. With `return_per_sample=True`, each sample also contains its category counts, inclusion flag and chip IoU. Existing saved reports are not updated automatically; evaluate their checkpoint again to obtain these fields.
+
+The calculation matches the previous notebooks: PW ignores labelled water outside JRC permanent water; FW ignores labelled water inside JRC permanent water; both retain labelled background. A wet chip with no water of the requested category is excluded from that category's average. Originally dry chips remain included. Legacy per-chip IoU is `(TP + 1e-7)/(TP + FP + FN + 1e-7)`, so empty unions (including all-ignore chips) score 1. Pooled IoU is unsmoothed and returns null for an empty union. These legacy category averages therefore differ from averaging only defined per-chip IoUs in the generic report. AW is not the arithmetic average of PW and FW.
 
 ## 12. How to change parts of the experiment
 

@@ -11,7 +11,7 @@ from pathlib import Path
 import torch
 from torch import nn
 
-from src.evaluation.metrics import SegmentationMetrics
+from src.evaluation.metrics import SegmentationMetrics, WaterCategoryMetrics
 from src.evaluation.sliding_window import sliding_window_predict
 
 
@@ -46,6 +46,7 @@ def evaluate(
     return_per_sample: bool = False,
     sample_id_key: str | None = None,
     class_names=None,
+    aw_pw_fw: bool = False,
 ) -> dict:
     """Return global counts/metrics, loss, and optional per-sample counts/metrics.
 
@@ -70,6 +71,9 @@ def evaluate(
     if isinstance(input_keys, str):
         raise TypeError("input_keys must be a sequence of input names, not a string")
 
+    if aw_pw_fw and num_classes != 2:
+        raise ValueError("AW/PW/FW requires binary non-water/water classes 0/1")
+    water_metrics = WaterCategoryMetrics(ignore_index) if aw_pw_fw else None
     metrics = SegmentationMetrics(
         num_classes=num_classes, ignore_index=ignore_index, class_names=class_names
     )
@@ -94,12 +98,12 @@ def evaluate(
                 if input_keys is not None
                 else [
                     key for key, value in batch.items()
-                    if key not in {target_key, sample_id_key} and isinstance(value, torch.Tensor)
+                    if key not in {target_key, sample_id_key, "permanent_water"} and isinstance(value, torch.Tensor)
                 ]
             )
             if not selected:
                 raise ValueError("No model input tensors in the batch")
-            if target_key in selected or (sample_id_key is not None and sample_id_key in selected):
+            if "permanent_water" in selected or target_key in selected or (sample_id_key is not None and sample_id_key in selected):
                 raise ValueError("input_keys must contain only model inputs")
 
             images = {}
@@ -124,6 +128,16 @@ def evaluate(
             predictions = logits.argmax(dim=1)
             metrics.update(predictions, targets)
 
+            category_rows = None
+            if water_metrics is not None:
+                if "permanent_water" not in batch:
+                    raise ValueError("AW/PW/FW requires dataset include_permanent_water=True")
+                permanent = batch["permanent_water"].to(device)
+                if permanent.shape != targets.shape:
+                    raise ValueError("Permanent-water mask must match target [B,H,W]")
+                category_rows = [water_metrics.update(predictions[i], targets[i], permanent[i])
+                                 for i in range(targets.shape[0])]
+
             if return_per_sample:
                 ids = _sample_ids(batch, sample_id_key, targets.shape[0], next_sample_index)
                 for idx, sample_id in enumerate(ids):
@@ -133,7 +147,10 @@ def evaluate(
                         class_names=class_names,
                     )
                     sample_metrics.update(predictions[idx], targets[idx])
-                    per_sample.append({"sample_id": sample_id, **sample_metrics.compute()})
+                    row = {"sample_id": sample_id, **sample_metrics.compute()}
+                    if category_rows is not None:
+                        row["aw_pw_fw"] = category_rows[idx]
+                    per_sample.append(row)
 
             next_sample_index += targets.shape[0]
             valid = targets != ignore_index
@@ -163,6 +180,8 @@ def evaluate(
         total_loss / total_loss_weight if criterion is not None and total_loss_weight > 0
         else None
     )
+    if water_metrics is not None:
+        result["aw_pw_fw"] = water_metrics.compute()
     result["num_samples"] = next_sample_index
     if return_per_sample:
         result["per_sample"] = per_sample

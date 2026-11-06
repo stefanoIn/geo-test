@@ -54,11 +54,19 @@ def load_split_paths(split_csv, modalities=("sar", "optical")):
 class Sen1Floods11Dataset(Dataset):
     """Lazy GeoTIFF loading; optional preprocessing; stable `chip_id` metadata."""
 
-    def __init__(self, split_csv, modalities=("sar", "optical"), preprocess_func=None):
+    def __init__(self, split_csv, modalities=("sar", "optical"), preprocess_func=None,
+                 include_permanent_water=False):
         super().__init__()
         self.modalities = tuple(modalities)
         self.preprocess_func = preprocess_func
         self.data_list = load_split_paths(split_csv, modalities=self.modalities)
+        if include_permanent_water:
+            for paths in self.data_list:
+                chip_id = paths["target"].name.removesuffix("_LabelHand.tif")
+                reference = HAND_DIR / "JRCWaterHand" / f"{chip_id}_JRCWaterHand.tif"
+                if not reference.is_file():
+                    raise FileNotFoundError(f"AW/PW/FW requires {reference}")
+                paths["permanent_water"] = reference
 
     def __len__(self):
         return len(self.data_list)
@@ -73,6 +81,15 @@ class Sen1Floods11Dataset(Dataset):
 
         with rasterio.open(paths["target"]) as src:
             mask = src.read(1).astype(np.int64)
+            if "permanent_water" in paths:
+                with rasterio.open(paths["permanent_water"]) as reference:
+                    if (reference.shape != src.shape or reference.crs != src.crs
+                            or not reference.transform.almost_equals(src.transform, precision=1e-10)):
+                        raise ValueError(f"JRC/label grid mismatch: {paths['permanent_water']}")
+                    permanent = reference.read(1).astype(np.int64)
+                if not np.isin(permanent, [0, 1]).all():
+                    raise ValueError(f"Expected binary JRC mask: {paths['permanent_water']}")
+                sample["permanent_water"] = torch.from_numpy(permanent)
         mask[mask == -1] = 255
         sample["target"] = torch.from_numpy(mask)
 

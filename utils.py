@@ -14,10 +14,12 @@ from src.data.preprocessing import NormalizeFromStats
 from src.data.statistics import get_or_compute_stats
 from src.data.transforms import random_crop
 
+# Convert the training.loss settings into a criterion on the selected device.
 def build_loss(config, device):
     name = config["name"]
 
     if name == "cross_entropy":
+        # None gives ordinary CE; a list weights the classes in label-ID order.
         weights = config.get("class_weights")
         if weights is not None:
             weights = torch.tensor(weights, dtype=torch.float32, device=device)
@@ -26,23 +28,76 @@ def build_loss(config, device):
             ignore_index=config.get("ignore_index", 255),
         )
 
-    if name == "water_dice":
-        return WaterDiceLoss(ignore_index=config.get("ignore_index", 255))
+    raise ValueError(f"Unsupported loss {name!r}. Available: cross_entropy")
 
 
-
+# Read YAML and reject configurations incompatible with the current pipeline.
 def load_config(path):
-    with Path(path).open(encoding="utf-8") as file:
-        config = yaml.safe_load(file)
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Configuration file not found: {path}. Run from the project folder.")
+    try:
+        with path.open(encoding="utf-8") as file:
+            config = yaml.safe_load(file)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"Invalid YAML in {path}: {exc}") from exc
     for section in ("experiment", "dataset", "model", "adapter", "head",
                     "preprocessing", "training", "evaluation", "output"):
         if not isinstance(config, dict) or not isinstance(config.get(section), dict):
             raise ValueError(f"YAML requires a '{section}' mapping")
+    # Check required fields before using them, so errors name the YAML location.
+    required = (
+        "dataset.name", "dataset.modalities", "dataset.train_csv", "dataset.val_csv",
+        "model.name", "model.checkpoint", "adapter.name", "head.name",
+        "head.in_channels", "head.num_classes", "preprocessing.crop_size",
+        "preprocessing.normalization.method", "preprocessing.normalization.statistics",
+        "training.epochs", "training.batch_size", "training.loss.name",
+        "training.optimizer.name", "training.optimizer.learning_rate", "output.directory",
+    )
+    for field in required:
+        value = config
+        for key in field.split("."):
+            if not isinstance(value, dict) or key not in value:
+                raise ValueError(f"Missing required YAML field: {field}")
+            value = value[key]
+        if value is None:
+            raise ValueError(f"YAML field cannot be null: {field}")
+
+    choices = {
+        "dataset.name": ("sen1floods11",),
+        "model.name": ("croma", "terramind_v1_base", "terramind_v1_large"),
+        "adapter.name": ("token_to_spatial",),
+        "head.name": ("fcn",),
+        "training.loss.name": ("cross_entropy",),
+        "training.optimizer.name": ("adamw", "adam", "sgd"),
+        "preprocessing.normalization.method": ("zscore", "two_sigma_stretch"),
+        "preprocessing.normalization.statistics": ("training_dataset", "pretraining-fixed"),
+    }
+    for field, available in choices.items():
+        value = config
+        for key in field.split("."):
+            value = value[key]
+        if value not in available:
+            raise ValueError(f"Unsupported {field}: {value!r}. Available: {', '.join(available)}")
+    scheduler = config["training"].get("scheduler")
+    if scheduler is not None and (not isinstance(scheduler, dict) or
+            scheduler.get("name") not in {"none", "cosine_annealing_warm_restarts"}):
+        raise ValueError("training.scheduler.name must be none or cosine_annealing_warm_restarts")
+    if scheduler and scheduler["name"] == "cosine_annealing_warm_restarts":
+        if type(scheduler.get("t0_epochs")) is not int or scheduler["t0_epochs"] < 1:
+            raise ValueError("training.scheduler.t0_epochs must be a positive integer")
+        if type(scheduler.get("t_mult", 1)) is not int or scheduler.get("t_mult", 1) < 1:
+            raise ValueError("training.scheduler.t_mult must be a positive integer")
+    modalities = config["dataset"]["modalities"]
+    if not isinstance(modalities, (list, tuple)) or not modalities or any(
+            value not in ("sar", "optical") for value in modalities) or len(set(modalities)) != len(modalities):
+        raise ValueError("dataset.modalities must list sar, optical, or both, without duplicates")
     if config["dataset"]["name"] != "sen1floods11":
         raise ValueError("The current dataset loader supports sen1floods11")
     loss = config["training"]["loss"]
     if loss["name"] != "cross_entropy":
         raise ValueError("This runner currently supports cross_entropy; other losses need implementation")
+    # The dataset converts ignored ground-truth pixels to 255.
     if loss.get("ignore_index", 255) != 255:
         raise ValueError("Sen1Floods11Dataset maps ignored labels to 255")
     weights = loss.get("class_weights")
@@ -57,25 +112,46 @@ def load_config(path):
         raise ValueError("checkpoint_metric must be iou or miou")
     if not 0 <= evaluation.get("checkpoint_class", 1) < config["head"]["num_classes"]:
         raise ValueError("checkpoint_class is outside the class range")
+    # Check that CROMA receives the selected sensors and its configured input size.
     if config["model"]["name"] == "croma":
         model = config["model"]
         expected = {"SAR": {"sar"}, "optical": {"optical"}, "both": {"sar", "optical"}}
-        if set(config["dataset"]["modalities"]) != expected.get(model["modality"]):
+        if set(config["dataset"]["modalities"]) != expected.get(model.get("modality", "both")):
             raise ValueError("CROMA model.modality and dataset.modalities disagree")
-        if model["image_resolution"] != config["preprocessing"]["crop_size"] or \
-                evaluation.get("tile_size") != model["image_resolution"]:
+        if model.get("image_resolution", 120) != config["preprocessing"]["crop_size"] or \
+                evaluation.get("tile_size") != model.get("image_resolution", 120):
             raise ValueError("Match CROMA image_resolution, crop_size and evaluation.tile_size")
+    # Check every configured split and referenced raster before statistics or GPU work.
+    checkpoint = Path(config["model"]["checkpoint"])
+    if not checkpoint.is_file():
+        raise FileNotFoundError(f"Pretrained checkpoint not found (model.checkpoint): {checkpoint}")
+    water_categories = config["evaluation"].get("aw_pw_fw", False)
+    if not isinstance(water_categories, bool):
+        raise ValueError("evaluation.aw_pw_fw must be true or false")
+    if water_categories and config["head"]["num_classes"] != 2:
+        raise ValueError("evaluation.aw_pw_fw requires binary classes 0/1")
+    for split in ("train", "val", "test", "bolivia"):
+        if split in {"train", "val"} or config["dataset"].get(f"{split}_csv"):
+            try:
+                build_dataset(config, split)
+            except FileNotFoundError as exc:
+                raise FileNotFoundError(f"Missing file for dataset split {split!r}: {exc}") from exc
     return config
 
+# Select chips from a split CSV; modalities can be overridden for statistics.
 def build_dataset(config, split, preprocess_func=None, modalities=None):
     return Sen1Floods11Dataset(
         split_csv=config["dataset"][f"{split}_csv"],
         modalities=tuple(modalities or config["dataset"]["modalities"]),
         preprocess_func=preprocess_func,
+        include_permanent_water=(split != "train" and config["evaluation"].get("aw_pw_fw", False)),
     )
 
+# Return a reusable normalizer and the actual statistics used by every split.
 def build_preprocessing(config):
     statistics = None
+    # Estimate data-derived statistics from raw training images only.
+    # Fixed pretraining statistics are selected by from_config below.
     if config["preprocessing"]["normalization"]["statistics"] == "training_dataset":
         statistics = get_or_compute_stats(
             dataset_factory=lambda modalities: build_dataset(config, "train", modalities=modalities),
@@ -87,6 +163,8 @@ def build_preprocessing(config):
     normalizer = NormalizeFromStats.from_config(config, training_statistics=statistics)
     return normalizer, normalizer.statistics
 
+# Apply one shared random crop to images and labels, then normalize the images.
+# A module-level callable also supports DataLoader worker serialization.
 class TrainingPreprocess:
     def __init__(self, normalizer, crop_size):
         self.normalizer = normalizer
@@ -95,6 +173,7 @@ class TrainingPreprocess:
     def __call__(self, sample):
         return self.normalizer(random_crop(sample, self.crop_size))
 
+# Assemble loaders with random training crops and full-chip evaluation inputs.
 def build_loaders(config, normalizer):
     loaders, seen = {}, {}
     for split in ("train", "val", "test", "bolivia"):
@@ -105,6 +184,7 @@ def build_loaders(config, normalizer):
         transform = (TrainingPreprocess(normalizer, config["preprocessing"]["crop_size"])
                      if split == "train" else normalizer)
         dataset = build_dataset(config, split, preprocess_func=transform)
+        # Detect chips reused across splits before training starts.
         for paths in dataset.data_list:
             chip = paths["target"].name
             if chip in seen:
@@ -119,6 +199,7 @@ def build_loaders(config, normalizer):
         )
     return loaders
 
+# Only parameters requiring gradients enter the optimizer; frozen weights are excluded.
 def build_optimizer(config, model):
     
     factories = {"adamw": torch.optim.AdamW, "adam": torch.optim.Adam, "sgd": torch.optim.SGD}
@@ -133,6 +214,8 @@ def build_optimizer(config, model):
   
     return factories[config["name"]]([p for p in model.parameters() if p.requires_grad], **options)
 
+# The trainer steps after optimizer updates, so convert the YAML epoch period to batches.
+# Skipped all-ignore batches do not advance the schedule.
 def build_scheduler(config, optimizer, batches_per_epoch):
     
     config = config or {"name": "none"}
@@ -148,6 +231,7 @@ def build_scheduler(config, optimizer, batches_per_epoch):
         T_mult=config.get("t_mult", 1), eta_min=config.get("eta_min", 0.0),
     )
 
+# Read in chunks to identify large checkpoint files without loading them into RAM.
 def file_sha256(path):
     
     digest = hashlib.sha256()
@@ -158,6 +242,7 @@ def file_sha256(path):
             
     return digest.hexdigest()
 
+# Create the output directory and reject NaN/Infinity values in saved JSON.
 def write_json(path, data):
     
     path = Path(path)

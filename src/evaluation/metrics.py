@@ -143,3 +143,54 @@ class SegmentationMetrics:
                 "tn": int(cm[0, 0]),
             }
         return result
+
+
+class WaterCategoryMetrics:
+    """Legacy Sen1Floods11 AW/PW/FW: retain background, mask other water.
+
+    Legacy per-chip IoU uses epsilon=1e-7 (empty unions score 1,
+    including all-ignore chips). Pooled IoU has no smoothing.
+    """
+
+    def __init__(self, ignore_index=255):
+        self.ignore_index = ignore_index
+        self.rows = {name: [] for name in ("AW", "PW", "FW")}
+
+    def update(self, prediction, target, permanent_water):
+        if prediction.shape != target.shape or permanent_water.shape != target.shape:
+            raise ValueError("Prediction, label and permanent-water mask shapes differ")
+        if not bool(((permanent_water == 0) | (permanent_water == 1)).all()):
+            raise ValueError("JRC permanent-water mask must contain only 0 and 1")
+        result = {}
+        originally_wet = bool((target == 1).any())
+        for category in self.rows:
+            labels = target.clone()
+            if category == "PW":
+                labels[(target == 1) & (permanent_water == 0)] = self.ignore_index
+            elif category == "FW":
+                labels[(target == 1) & (permanent_water == 1)] = self.ignore_index
+            included = not (category != "AW" and originally_wet and not bool((labels == 1).any()))
+            metrics = SegmentationMetrics(2, self.ignore_index)
+            metrics.update(prediction, labels)
+            counts = metrics.compute()["binary_counts"]
+            counts = {key: counts[key] for key in ("tp", "fp", "fn", "tn")}
+            union = counts["tp"] + counts["fp"] + counts["fn"]
+            row = {"included": included, **counts,
+                   "chip_iou": (counts["tp"] + 1e-7) / (union + 1e-7) if included else None}
+            self.rows[category].append(row)
+            result[category] = row
+        return result
+
+    def compute(self):
+        summary = {}
+        for category, rows in self.rows.items():
+            included = [row for row in rows if row["included"]]
+            counts = {key: sum(row[key] for row in included) for key in ("tp", "fp", "fn", "tn")}
+            union = counts["tp"] + counts["fp"] + counts["fn"]
+            summary[category] = {
+                "evaluated_chips": len(included), "excluded_chips": len(rows) - len(included),
+                "mean_chip_iou": sum(row["chip_iou"] for row in included) / len(included) if included else None,
+                "total_iou": counts["tp"] / union if union else None, **counts,
+            }
+        return {"protocol": "legacy_sen1floods11; per-chip epsilon=1e-7; empty union scores 1; other water ignored",
+                "summary": summary}
