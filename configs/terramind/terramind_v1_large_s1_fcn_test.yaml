@@ -1,0 +1,23 @@
+# Model-only integration test. Preprocessing/training configuration will follow.
+experiment:
+  name: terramind_v1_large_s1_fcn_test
+  seed: 234
+
+model:
+  name: terramind_v1_large
+  checkpoint: pretrained_models/TerraMind_v1_large.pt
+  freeze_encoder: true
+
+adapter:
+  name: token_to_spatial
+  feature_key: tokens
+  grid_size: null
+
+head:
+  name: fcn
+  in_channels: 1024
+  num_classes: 2
+
+test:
+  input_size: 120
+  batch_size: 1
