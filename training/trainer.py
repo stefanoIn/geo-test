@@ -1,8 +1,8 @@
 """One training epoch for dense prediction models.
 
 The caller owns the epoch loop, model, loss, optimizer, and scheduler.
-Expected batches: {"sar": ..., "optical": ..., "target": ...}, with either
-or both modalities present. ``criterion`` should return a scalar mean loss;
+Expected batches: image tensors [B,C,H,W], a target [B,H,W], and
+optional metadata such as chip_id. ``criterion`` should return a scalar mean loss;
 per-epoch loss aggregation is designed for segmentation CrossEntropyLoss.
 """
 
@@ -10,10 +10,15 @@ import torch
 from torch import nn
 
 
-def train_one_epoch(model, train_loader, optimizer, criterion, device, scheduler=None):
-    """Train for one epoch
-       Returns the mean loss over valid target pixels.
+def train_one_epoch(model, train_loader, optimizer, criterion, device, scheduler=None, input_keys=None):
+    """Train for one epoch; return the mean loss over valid target pixels.
+
+    ``scheduler``, when provided, is stepped after each optimizer update,
+    matching the previous CROMA/TerraMind notebook training loops.
     """
+    if isinstance(input_keys, str):
+        raise TypeError("input_keys must be a sequence of names, not a string")
+
     model.train()
     ignore_index = getattr(criterion, "ignore_index", 255)
     total_loss = 0.0
@@ -25,11 +30,26 @@ def train_one_epoch(model, train_loader, optimizer, criterion, device, scheduler
         if not valid.any().item():
             continue
 
-        images = {
-            name: tensor.to(device)
-            for name, tensor in batch.items()
-            if name != "target"
-        }
+        # Only image tensors belong to the model input. Metadata such as
+        # chip_id (a list of strings) stays in the batch, on the CPU.
+        keys = (
+            list(input_keys)
+            if input_keys is not None
+            else [
+                name for name, tensor in batch.items()
+                if name != "target"
+                and isinstance(tensor, torch.Tensor)
+                and tensor.ndim == 4
+            ]
+        )
+        if not keys or "target" in keys:
+            raise ValueError("input_keys must specify at least one image tensor")
+        images = {}
+        for name in keys:
+            tensor = batch.get(name)
+            if not isinstance(tensor, torch.Tensor) or tensor.ndim != 4:
+                raise ValueError(f"{name}: expected batched image tensor [B,C,H,W]")
+            images[name] = tensor.to(device)
 
         optimizer.zero_grad(set_to_none=True)
         logits = model(images)
@@ -39,9 +59,7 @@ def train_one_epoch(model, train_loader, optimizer, criterion, device, scheduler
             raise RuntimeError("Training loss must be a finite scalar")
 
         loss.backward()
-        
         optimizer.step()
-        
         if scheduler is not None:
             scheduler.step()
 

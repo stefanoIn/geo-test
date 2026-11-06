@@ -26,7 +26,8 @@ class TerraMindEncoder(nn.Module):
         freeze: Keep the pretrained backbone frozen and in eval mode.
 
     Returns:
-        {'tokens': Tensor[B, N, D], 'pooled': Tensor[B, D]}.
+        {'tokens': Tensor[B, N, D], 'pooled': Tensor[B, D],
+         'padded_size': (H_padded, W_padded)}.
 
     Notes:
         - Raw image inputs use [B, C, H, W]; the channel count is checked
@@ -126,7 +127,7 @@ class TerraMindEncoder(nn.Module):
             self.backbone.eval()
         return self
 
-    def forward(self, images: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    def forward(self, images: dict[str, torch.Tensor]) -> dict[str, torch.Tensor | tuple[int, int]]:
         if not isinstance(images, dict) or not images:
             raise ValueError("Expected a non-empty dictionary of modality tensors")
 
@@ -165,7 +166,9 @@ class TerraMindEncoder(nn.Module):
                 pad_w = (-width) % pw
                 if pad_h or pad_w:
                     tensor = F.pad(tensor, (0, pad_w, 0, pad_h), mode="replicate")
-                padded_hw = tensor.shape[-2:]
+                if padded_hw is not None and padded_hw != tensor.shape[-2:]:
+                    raise ValueError("Spatial modalities have incompatible padded sizes")
+                padded_hw = tuple(tensor.shape[-2:])
                 spatial_input_found = True
 
             # Non-raw modalities are passed through to TerraTorch unchanged;
@@ -204,4 +207,10 @@ class TerraMindEncoder(nn.Module):
                 f"(expected {expected_tokens})"
             )
 
-        return {"tokens": tokens, "pooled": tokens.mean(dim=1)}
+        # The decoder needs the actual patch-grid extent to avoid stretching
+        # padded pixels into the original image when restoring logits.
+        return {
+            "tokens": tokens,
+            "pooled": tokens.mean(dim=1),
+            "padded_size": padded_hw,
+        }

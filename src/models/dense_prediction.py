@@ -25,11 +25,25 @@ class DensePredictionModel(nn.Module):
         spatial_features = self.adapter(features)
         predictions = self.head(spatial_features)
 
-        if predictions.shape[-2:] != input_hw:
+        # TerraMind may pad input images to whole patches (e.g. 120 -> 128).
+        # Decode on the *padded* spatial extent, then remove the padding.
+        # Encoders without this metadata (e.g. CROMA) behave as before.
+        padded_hw = (
+            features.get("padded_size", input_hw)
+            if isinstance(features, dict) else input_hw
+        )
+        if (not isinstance(padded_hw, (tuple, list)) or len(padded_hw) != 2
+                or any(type(n) is not int or n <= 0 for n in padded_hw)
+                or any(p < original for p, original in zip(padded_hw, input_hw))):
+            raise ValueError(f"Invalid encoder padded_size: {padded_hw!r}")
+
+        if predictions.shape[-2:] != tuple(padded_hw):
             predictions = F.interpolate(
                 predictions,
-                size=input_hw,
+                size=tuple(padded_hw),
                 mode="bilinear",
                 align_corners=False,
             )
+        if tuple(padded_hw) != tuple(input_hw):
+            predictions = predictions[..., :input_hw[0], :input_hw[1]]
         return predictions

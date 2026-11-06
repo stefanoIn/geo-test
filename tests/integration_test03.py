@@ -26,8 +26,9 @@ from src.models.dense_prediction import DensePredictionModel
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CONFIG = ROOT / "configs/terramind/terramind_v1_large_s1_fcn_test.yaml"
-
+DEFAULT_CONFIG = (
+    ROOT / "configs/terramind/terramind_v1_large_s1_fcn_all_hand_labels.yaml"
+)
 # Only the *test data* are specialised here. TerraMindEncoder remains
 # dataset-agnostic and receives native modality names + a mapping from input
 # keys to native names.
@@ -71,8 +72,15 @@ def main():
     case = CASES[args.modality]
     modalities = [native_name for native_name, _ in case.values()]
     input_mapping = {data_name: native for data_name, (native, _) in case.items()}
-    side = args.input_size if args.input_size is not None else cfg["test"]["input_size"]
-    batch_size = cfg["test"]["batch_size"]
+    test_cfg = cfg.get("test", {})
+
+    side = (
+        args.input_size
+        if args.input_size is not None
+        else test_cfg.get("input_size", cfg["preprocessing"]["crop_size"])
+    )
+
+    batch_size = test_cfg.get("batch_size", 1)
     if side <= 0 or batch_size <= 0:
         raise ValueError("input size and batch size must be positive")
 
