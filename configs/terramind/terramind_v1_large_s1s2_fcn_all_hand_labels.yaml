@@ -33,8 +33,8 @@ head:
 
 preprocessing:
   normalization:
-    method: two_sigma_stretch
-    statistics: training_dataset
+    method: zscore
+    statistics: pretraining-fixed
     use_8_bit: false
   band_indices:
     sar: [0, 1]

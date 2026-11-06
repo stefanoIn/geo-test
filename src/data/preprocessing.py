@@ -2,6 +2,27 @@
 
 import torch
 
+# TerraMind v1 statistics from TerraTorch terramind_register.py.
+# S1: VV/VH in dB. S2: native DN, in the product default band order.
+TERRAMIND_STATS = {
+    "S1GRD": {
+        "mean": [-12.599, -20.293],
+        "std": [5.195, 5.89],
+    },
+    "S1RTC": {
+        "mean": [-10.93, -17.329],
+        "std": [4.391, 4.459],
+    },
+    "S2L1C": {
+        "mean": [2357.089, 2137.385, 2018.788, 2082.986, 2295.651, 2854.537, 3122.849, 3040.56, 3306.481, 1473.847, 506.07, 2472.825, 1838.929],
+        "std": [1624.683, 1675.806, 1557.708, 1833.702, 1823.738, 1733.977, 1732.131, 1679.732, 1727.26, 1024.687, 442.165, 1331.411, 1160.419],
+    },
+    "S2L2A": {
+        "mean": [1390.458, 1503.317, 1718.197, 1853.91, 2199.1, 2779.975, 2987.011, 3083.234, 3132.22, 3162.988, 2424.884, 1857.648],
+        "std": [2106.761, 2141.107, 2038.973, 2134.138, 2085.321, 1889.926, 1820.257, 1871.918, 1753.829, 1797.379, 1434.261, 1334.311],
+    },
+}
+
 class NormalizeFromStats:
     """Normalise each image modality with precomputed per-band statistics.
 
@@ -28,6 +49,47 @@ class NormalizeFromStats:
         self.method = method
         self.band_indices = band_indices or {}
         self.use_8_bit = use_8_bit
+
+    @classmethod
+    def from_config(cls, config, training_statistics=None):
+        """Build normalization from YAML; dataset statistics are supplied by the caller."""
+        preprocessing = config["preprocessing"]
+        normalization = preprocessing["normalization"]
+        policy = normalization["statistics"]
+        if policy == "pretraining-fixed":
+            model = config["model"]
+            if model["name"] not in {"terramind_v1_base", "terramind_v1_large"}:
+                raise ValueError("pretraining-fixed currently supports TerraMind v1 only")
+            method = normalization.get("method", "zscore")
+            if method != "zscore":
+                raise ValueError("pretraining-fixed requires method: zscore")
+            mapping = model.get("input_mapping") or {
+                name: name for name in model["modalities"]
+            }
+            if set(mapping.values()) != set(model["modalities"]):
+                raise ValueError("input_mapping must match model modalities")
+            if set(mapping) != set(config["dataset"]["modalities"]):
+                raise ValueError("input_mapping must match dataset modalities")
+            statistics = {}
+            for name, product in mapping.items():
+                if product not in TERRAMIND_STATS:
+                    raise ValueError(f"No fixed statistics for {product!r}")
+                statistics[name] = {
+                    key: list(values) for key, values in TERRAMIND_STATS[product].items()
+                }
+        elif policy == "training_dataset":
+            if training_statistics is None:
+                raise ValueError("Provide training_statistics for training_dataset normalization")
+            statistics = training_statistics
+            method = normalization.get("method", "two_sigma_stretch")
+        else:
+            raise ValueError(f"Unknown statistics policy: {policy!r}")
+        return cls(
+            statistics=statistics,
+            method=method,
+            band_indices=preprocessing.get("band_indices"),
+            use_8_bit=normalization.get("use_8_bit", False),
+        )
 
     def __call__(self, sample):
         result = sample.copy()
