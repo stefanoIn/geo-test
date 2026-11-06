@@ -2,9 +2,9 @@
 
 import os
 import tempfile
-from pathlib import Path
-
 import torch
+
+from pathlib import Path
 from torch import nn
 
 
