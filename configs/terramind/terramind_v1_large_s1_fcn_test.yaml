@@ -1,11 +1,16 @@
-# Model-only integration test. Preprocessing/training configuration will follow.
+# Integration test only: run.py is not yet a model/training runner.
 experiment:
   name: terramind_v1_large_s1_fcn_test
   seed: 234
 
 model:
   name: terramind_v1_large
+  size: large
   checkpoint: pretrained_models/TerraMind_v1_large.pt
+  modalities: [S1GRD]
+  input_mapping:
+    sar: S1GRD
+  merge_method: mean
   freeze_encoder: true
 
 adapter:

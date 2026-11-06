@@ -1,0 +1,33 @@
+# Illustrative model/data settings for Sen1Floods11; NOT a standalone
+# training configuration. Existing run.py does not construct the model.
+dataset:
+  name: sen1floods11
+  modalities: [sar, optical]
+
+model:
+  name: terramind_v1_large
+  size: large
+  checkpoint: pretrained_models/TerraMind_v1_large.pt
+  modalities: [S1GRD, S2L1C]
+  input_mapping:
+    sar: S1GRD
+    optical: S2L1C
+  merge_method: mean
+  freeze_encoder: true
+
+adapter:
+  name: token_to_spatial
+  feature_key: tokens
+  grid_size: null
+
+head:
+  name: fcn
+  in_channels: 1024
+  num_classes: 2
+
+preprocessing:
+  # Sen1Floods11 S2L1C has all 13 bands, including B10.
+  band_indices:
+    sar: [0, 1]
+    optical: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+  # Normalisation is configured in the data pipeline, not in the encoder.
