@@ -1,8 +1,8 @@
-﻿# Assemble one CROMA experiment using the GeoTest modules
+# Assemble one CROMA experiment using the GeoTest modules
 
 A Python-first tutorial, 6 November 2026.
 
-This tutorial builds one concrete experiment: **CROMA Large + FCN on Sen1Floods11 hand-labelled data**, using Sentinel-1 and Sentinel-2. You set parameters directly in Python. No YAML parser, command-line arguments or experiment framework is required.
+This tutorial builds one concrete experiment: **CROMA Large + FCN on Sen1Floods11 hand-labelled data**, using Sentinel-1 and Sentinel-2. You load settings from a YAML file in the first cell, then assemble each module explicitly in Python. No command-line arguments or automatic experiment runner are required.
 
 The numbered sections are intended to be executed in order in a notebook in the project folder, or copied in order into a Python script in that folder. Optional alternatives at the end are not part of the main sequence. Use your existing environment containing PyTorch, torchvision, NumPy, rasterio, einops and the project's other dependencies. Data and weights must already be local. This document was written without launching training.
 
@@ -25,7 +25,7 @@ Sen1Floods11Dataset
 
 The encoder supplies representations, the adapter arranges them as a spatial grid, and the head learns water/non-water predictions. The trainer optimizes this composed model; it does not need CROMA-specific code.
 
-## 1. Import the modules and set your experiment parameters
+## 1. Read the experiment YAML and import the modules
 
 Run with the project folder as your current working directory. All paths below are relative; no machine-specific root path is needed.
 
@@ -37,6 +37,7 @@ import json
 import random
 
 import numpy as np
+import yaml
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
@@ -53,38 +54,64 @@ from src.evaluation.evaluator import evaluate, save_evaluation_report
 from training.trainer import train_one_epoch
 from training.checkpoints import save_checkpoint, load_checkpoint
 
-seed = 234
+config_path = Path("configs/croma/croma_s1s2_fcn_all_hand_labels.yaml")
+with config_path.open(encoding="utf-8") as file:
+    config = yaml.safe_load(file)
+
+# These aliases make the module calls below easier to read.
+data_cfg = config["dataset"]
+model_cfg = config["model"]
+train_cfg = config["training"]
+eval_cfg = config["evaluation"]
+preprocess_cfg = config["preprocessing"]
+loss_cfg = train_cfg["loss"]
+optimizer_cfg = train_cfg["optimizer"]
+
+if data_cfg["name"] != "sen1floods11" or model_cfg["name"] != "croma":
+    raise ValueError("This walkthrough assembles CROMA on Sen1Floods11")
+if config["head"]["name"] != "fcn" or config["adapter"]["name"] != "token_to_spatial":
+    raise ValueError("This walkthrough uses TokenToSpatial and FCN")
+if config["head"]["num_classes"] != 2 or loss_cfg["ignore_index"] != 255:
+    raise ValueError("This walkthrough uses binary labels with ignore_index=255")
+
+seed = config["experiment"]["seed"]
 random.seed(seed)
 np.random.seed(seed)
 torch.manual_seed(seed)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-modalities = ("sar", "optical")
-croma_modality = "both"
-pretrained_path = Path("pretrained_models/CROMA_large.pt")
-crop_size = 120
-batch_size = 1              # Start conservatively; increase if memory allows.
-epochs = 100
-validate_every = 5
-learning_rate = 5e-4
-weight_decay = 0.01
-freeze_encoder = True
-class_weights = [1.0, 8.0]  # Set to None for unweighted cross-entropy.
-ignore_index = 255
+modalities = tuple(data_cfg["modalities"])
+croma_modality = model_cfg["modality"]
+expected = {"SAR": {"sar"}, "optical": {"optical"}, "both": {"sar", "optical"}}
+if set(modalities) != expected[croma_modality]:
+    raise ValueError("Dataset and encoder modalities disagree")
+pretrained_path = Path(model_cfg["checkpoint"])
+crop_size = preprocess_cfg["crop_size"]
+batch_size = train_cfg["batch_size"]
+epochs = train_cfg["epochs"]
+validate_every = train_cfg.get("validate_every", 5)
+learning_rate = optimizer_cfg["learning_rate"]
+weight_decay = optimizer_cfg["weight_decay"]
+freeze_encoder = model_cfg["freeze_encoder"]
+class_weights = loss_cfg.get("class_weights")
+ignore_index = loss_cfg["ignore_index"]
+if model_cfg["image_resolution"] != crop_size or eval_cfg["tile_size"] != crop_size:
+    raise ValueError("Keep CROMA image_resolution, crop_size and tile_size equal here")
 
-split_dir = Path("data/sen1floods11/splits/all_hand_labels")
 split_paths = {
-    "train": split_dir / "flood_train_data.csv",
-    "val": split_dir / "flood_valid_data.csv",
-    "test": split_dir / "flood_test_data.csv",
-    "bolivia": split_dir / "flood_bolivia_data.csv",
+    split: Path(data_cfg[f"{split}_csv"])
+    for split in ("train", "val", "test", "bolivia")
 }
 assert pretrained_path.is_file(), pretrained_path
 assert all(path.is_file() for path in split_paths.values())
 print("Device:", device)
 ```
 
-These are explicit example settings, not a claim of optimal hyperparameters or exact reproduction of an older run. batch_size and class_weights are scientific choices. Seeds help repeatability but do not guarantee deterministic CUDA execution.
+The YAML is now the source of experiment settings. To change the learning rate, batch size or loss weighting, edit the YAML and rerun the construction cells; changing a file does not update already-created Python objects. Add `training.validate_every: 5` explicitly if desired (this tutorial defaults to 5).
+
+Check `model.checkpoint` before starting: the inspected YAML uses `pretrained_models/croma/CROMA_large.pt`, while the observed local file is `pretrained_models/CROMA_large.pt`. Correct that YAML path to your actual relative file location. This document does not modify the YAML.
+
+The existing settings are not a claim of optimal hyperparameters or exact reproduction of an older run. batch_size and class_weights are scientific choices. Seeds help repeatability but do not guarantee deterministic CUDA execution.
 
 ## 2. Load the raw datasets and check the splits
 
@@ -130,27 +157,20 @@ def raw_training_dataset(selected_modalities):
         preprocess_func=None,
     )
 
-statistics = get_or_compute_stats(
-    dataset_factory=raw_training_dataset,
-    modalities=modalities,
-    split_csv=split_paths["train"],
-    dataset_name="sen1floods11",
-    cache_dir="data/statistics",
-)
+statistics = None
+if preprocess_cfg["normalization"]["statistics"] == "training_dataset":
+    statistics = get_or_compute_stats(
+        dataset_factory=raw_training_dataset,
+        modalities=modalities,
+        split_csv=split_paths["train"],
+        dataset_name=data_cfg["name"],
+        cache_dir="data/statistics",
+    )
+normalizer = NormalizeFromStats.from_config(config, training_statistics=statistics)
 
-band_indices = {
-    "sar": [0, 1],
-    "optical": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12],
-}
-normalizer = NormalizeFromStats(
-    statistics=statistics,
-    method="two_sigma_stretch",
-    band_indices=band_indices,
-    use_8_bit=False,
-)
 ```
 
-CROMA optical input uses 12 bands, so this removes B10 from the 13-band Sen1Floods11 L1C tensor. Removing a band does not convert L1C to L2A. The stretch computes clip((x-(mean-2*std))/(4*std),0,1). Statistics are calculated from finite training-image values, not validation/test data. Invalid image pixels are filled with zero after normalization; the target mask is not automatically changed.
+CROMA optical input uses 12 bands, so this removes B10 from the 13-band Sen1Floods11 L1C tensor. Removing a band does not convert L1C to L2A. The YAML supplies band_indices, normalization method and use_8_bit. from_config applies those settings; pretraining-fixed is currently supported for TerraMind, not CROMA. The stretch computes clip((x-(mean-2*std))/(4*std),0,1). Statistics are calculated from finite training-image values, not validation/test data. Invalid image pixels are filled with zero after normalization; the target mask is not automatically changed.
 
 `NormalizeFromStats` parameters:
 
@@ -181,7 +201,7 @@ train_dataset = Sen1Floods11Dataset(
     preprocess_func=TrainingPreprocess(normalizer, crop_size),
 )
 train_loader = DataLoader(
-    train_dataset, batch_size=batch_size, shuffle=True, num_workers=0,
+    train_dataset, batch_size=batch_size, shuffle=True, num_workers=train_cfg.get("num_workers", 0),
 )
 
 evaluation_loaders = {
@@ -191,22 +211,23 @@ evaluation_loaders = {
             modalities=modalities,
             preprocess_func=normalizer,
         ),
-        batch_size=1, shuffle=False, num_workers=0,
+        batch_size=eval_cfg["batch_size"], shuffle=False,
+        num_workers=train_cfg.get("num_workers", 0),
     )
     for split in ("val", "test", "bolivia")
 }
 ```
 
-num_workers=0 keeps this simple in Windows notebooks and scripts. An epoch visits all training chips once, sampling one crop from each. This is not every pixel of every chip per epoch. No flips or rotations are added by this example.
+Keep training.num_workers: 0 for this sequential Windows notebook tutorial; multiple workers may need script-level setup and a main guard. An epoch visits all training chips once, sampling one crop from each. This is not every pixel of every chip per epoch. No flips or rotations are added by this example.
 
 ## 5. Create the encoder
 
 ```python
 encoder = CROMAEncoder(
     checkpoint_path=pretrained_path,
-    size="large",
+    size=model_cfg["size"],
     modality=croma_modality,
-    image_resolution=crop_size,
+    image_resolution=model_cfg["image_resolution"],
     freeze=freeze_encoder,
 )
 ```
@@ -224,8 +245,14 @@ The wrapper returns a dictionary with tokens [B,N,D] and pooled [B,D]. For both,
 ## 6. Create the adapter and head, then assemble the model
 
 ```python
-adapter = TokenToSpatial(feature_key="tokens", grid_size=None)
-head = FCNHead(in_channels=1024, num_classes=2)
+adapter = TokenToSpatial(
+    feature_key=config["adapter"]["feature_key"],
+    grid_size=config["adapter"].get("grid_size"),
+)
+head = FCNHead(
+    in_channels=config["head"]["in_channels"],
+    num_classes=config["head"]["num_classes"],
+)
 model = DensePredictionModel(encoder=encoder, adapter=adapter, head=head)
 model = model.to(device)
 
@@ -241,22 +268,46 @@ UPerNet is not implemented in the current head factory. It would require a suita
 ## 7. Create the loss, optimizer and optional scheduler
 
 ```python
+if loss_cfg["name"] != "cross_entropy":
+    raise ValueError("Add an explicit criterion implementation for this loss")
+
 weights = None if class_weights is None else torch.tensor(
     class_weights, dtype=torch.float32, device=device
 )
 criterion = nn.CrossEntropyLoss(
     weight=weights, ignore_index=ignore_index, reduction="mean",
 )
-optimizer = torch.optim.AdamW(
-    [p for p in model.parameters() if p.requires_grad],
-    lr=learning_rate, weight_decay=weight_decay,
+optimizer_types = {
+    "adamw": torch.optim.AdamW,
+    "adam": torch.optim.Adam,
+    "sgd": torch.optim.SGD,
+}
+optimizer_name = optimizer_cfg["name"]
+optimizer_options = {"lr": learning_rate, "weight_decay": weight_decay}
+if optimizer_name == "sgd":
+    optimizer_options["momentum"] = optimizer_cfg.get("momentum", 0.9)
+optimizer = optimizer_types[optimizer_name](
+    [p for p in model.parameters() if p.requires_grad], **optimizer_options
 )
-scheduler = None  # Constant learning rate in this main example.
+
+scheduler_cfg = train_cfg.get("scheduler") or {"name": "none"}
+if scheduler_cfg["name"] == "none":
+    scheduler = None
+elif scheduler_cfg["name"] == "cosine_annealing_warm_restarts":
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        optimizer,
+        T_0=int(scheduler_cfg["t0_epochs"] * len(train_loader)),
+        T_mult=scheduler_cfg.get("t_mult", 1),
+        eta_min=scheduler_cfg.get("eta_min", 0.0),
+    )
+else:
+    raise ValueError("Add the scheduler's construction and stepping policy explicitly")
+
 ```
 
 Pass raw logits to CE, not softmax probabilities. Targets are integer class labels, not one-hot arrays. Keep ignore_index=255 with this dataset. Class weights [1,8] increase the water contribution; None removes weighting. Use reduction="mean" with the current trainer's aggregation.
 
-To change LR, change learning_rate before building the optimizer. To fine-tune the backbone, set freeze_encoder=False before constructing it, then rebuild the optimizer to include its trainable parameters. That changes both memory requirements and the experiment protocol.
+To change LR, edit training.optimizer.learning_rate in YAML, reload it and rebuild the optimizer. To fine-tune the backbone, set freeze_encoder=False before constructing it, then rebuild the optimizer to include its trainable parameters. That changes both memory requirements and the experiment protocol.
 
 ## 8. Prepare the run folder and evaluation call
 
@@ -264,7 +315,7 @@ You decide what a run contains; checkpointing does not create an experiment prot
 
 ```python
 run_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:8]
-run_dir = Path("runs/sen1floods11/croma/fcn_s1s2") / run_id
+run_dir = Path(config["output"]["directory"]) / run_id
 run_dir.mkdir(parents=True, exist_ok=False)
 
 settings = {
@@ -272,7 +323,7 @@ settings = {
     "modalities": list(modalities),
     "croma_modality": croma_modality,
     "pretrained_path": str(pretrained_path),
-    "encoder_size": "large",
+    "encoder_size": model_cfg["size"],
     "freeze_encoder": freeze_encoder,
     "crop_size": crop_size,
     "batch_size": batch_size,
@@ -282,11 +333,12 @@ settings = {
     "weight_decay": weight_decay,
     "class_weights": class_weights,
     "ignore_index": ignore_index,
-    "scheduler": "none",
-    "evaluation_tile_size": crop_size,
-    "evaluation_stride": 60,
+    "scheduler": scheduler_cfg,
+    "evaluation_tile_size": eval_cfg["tile_size"],
+    "evaluation_stride": eval_cfg.get("stride"),
     "split_paths": {key: str(value) for key, value in split_paths.items()},
 }
+(run_dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
 (run_dir / "settings.json").write_text(json.dumps(settings, indent=2), encoding="utf-8")
 normalization_settings = {
     "statistics": normalizer.statistics,
@@ -321,13 +373,13 @@ def evaluate_split(loader):
         num_classes=2,
         criterion=criterion,
         ignore_index=ignore_index,
-        tile_size=crop_size,
-        stride=60,
-        tile_batch_size=1,
+        tile_size=eval_cfg["tile_size"],
+        stride=eval_cfg.get("stride"),
+        tile_batch_size=eval_cfg["tile_batch_size"],
         input_keys=modalities,
-        return_per_sample=True,
-        sample_id_key="chip_id",
-        class_names=["non_water", "water"],
+        return_per_sample=eval_cfg.get("return_per_sample", True),
+        sample_id_key=eval_cfg.get("sample_id_key", "chip_id"),
+        class_names=eval_cfg.get("class_names", ["non_water", "water"]),
     )
 ```
 
@@ -344,7 +396,7 @@ if epochs < 1 or validate_every < 1:
     raise ValueError("epochs and validate_every must be positive")
 
 history = []
-best_water_iou = float("-inf")
+best_score = float("-inf")
 best_path = run_dir / "checkpoints/best.pt"
 last_path = run_dir / "checkpoints/last.pt"
 
@@ -376,10 +428,16 @@ for epoch in range(1, epochs + 1):
         validation_summary = {key: value for key, value in validation.items()
                               if key != "per_sample"}
         row["validation"] = validation_summary
-        water_iou = validation["iou_per_class"][1]
+        metric_name = eval_cfg.get("checkpoint_metric", "miou")
+        if metric_name == "iou":
+            score = validation["iou_per_class"][eval_cfg.get("checkpoint_class", 1)]
+        elif metric_name == "miou":
+            score = validation["miou"]
+        else:
+            raise ValueError("This example selects by iou or miou (maximize)")
 
-        if water_iou is not None and water_iou > best_water_iou:
-            best_water_iou = water_iou
+        if score is not None and score > best_score:
+            best_score = score
             save_checkpoint(
                 best_path, model, epoch,
                 optimizer=optimizer, scheduler=scheduler,
@@ -405,7 +463,7 @@ for epoch in range(1, epochs + 1):
 
 `train_one_epoch` switches the model to training mode, skips all-ignore batches, computes the loss, runs backward and updates the optimizer. It returns the epoch's aggregated loss. Frozen encoder wrappers keep their backbone in evaluation mode despite model.train().
 
-The outer loop selects the largest validation water IoU. No test score influences selection. To select mIoU instead, use validation['miou'] as the comparison value and rename best_water_iou for clarity. Do not average validation metrics across epochs to choose a checkpoint.
+The outer loop follows evaluation.checkpoint_metric: iou with checkpoint_class: 1 selects water IoU; miou selects mean class IoU. Both are maximized on validation only. Do not average validation metrics across epochs to choose a checkpoint.
 
 `save_checkpoint` accepts a file path, model and epoch, with optional optimizer, scheduler, metrics, config and components. components=None saves the whole model; ['adapter','head'] saves those modules only. TokenToSpatial currently has no learned weights, but including it is harmless. Partial checkpoints require the same frozen pretrained backbone when loaded.
 
@@ -459,7 +517,7 @@ recall = report["recall_per_class"][1]
 precision = report["precision_per_class"][1]
 omission = None if recall is None else 1 - recall
 commission = None if precision is None else 1 - precision
-chip_values = [sample["iou_per_class"][1] for sample in report["per_sample"]
+chip_values = [sample["iou_per_class"][1] for sample in report.get("per_sample", [])
                if sample["iou_per_class"][1] is not None]
 mean_per_chip_water_iou = sum(chip_values) / len(chip_values) if chip_values else None
 print("Omission:", omission, "Commission:", commission)
@@ -483,7 +541,7 @@ The following are alternatives, not additional cells to execute blindly after tr
 | S2 | ('optical',) | 'optical' |
 | S1+S2 | ('sar','optical') | 'both' |
 
-Keep only the relevant band_indices for clarity and change the output parent folder name accordingly. Dataset, normalization and encoder must agree. Change these variables before creating datasets, statistics and the encoder. Base CROMA also requires its own checkpoint, size='base' and FCN in_channels=768.
+Keep only the relevant band_indices for clarity and change the output parent folder name accordingly. Dataset, normalization and encoder must agree. Set dataset.modalities and model.modality in YAML, then reload it before constructing datasets, statistics and the encoder. Base CROMA also requires its own checkpoint, size='base' and FCN in_channels=768.
 
 ### Another optimizer or learning rate
 
@@ -500,7 +558,7 @@ Adam and AdamW are also available through PyTorch. Equal weight_decay values do 
 
 ### Cosine warm restarts
 
-Replace scheduler=None before training with:
+The main sequence already constructs this scheduler when YAML selects cosine_annealing_warm_restarts. Its direct module call is:
 
 ```python
 scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
@@ -511,7 +569,7 @@ scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
 )
 ```
 
-The trainer steps after every successful optimizer update, so T_0 is in updates here. All-ignore skipped batches do not advance it. Update settings['scheduler'] and record the scheduler parameters when using this alternative.
+The trainer steps after every successful optimizer update, so T_0 is in updates here. All-ignore skipped batches do not advance it. Set training.scheduler fields in YAML so the saved configuration records this choice.
 
 An epoch-based scheduler should instead be stepped outside train_one_epoch, with scheduler=None passed into the trainer. ReduceLROnPlateau needs a validation metric and should be called only when validation runs. Do not step twice.
 
