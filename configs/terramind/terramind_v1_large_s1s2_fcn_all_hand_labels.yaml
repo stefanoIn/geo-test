@@ -40,7 +40,7 @@ preprocessing:
     sar: [0, 1]
     # Sen1Floods11 S2 L1C: 13 channels, including B10.
     optical: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-  crop_size: 120
+  crop_size: 128
 
 training:
   epochs: 100
@@ -63,8 +63,8 @@ training:
 evaluation:
   aw_pw_fw: true  # JRC-based all/permanent/flood water IoU
   batch_size: 1
-  tile_size: 120
-  stride: 60
+  tile_size: 128
+  stride: 64
   tile_batch_size: 1
   class_names: [non_water, water]
   return_per_sample: true
