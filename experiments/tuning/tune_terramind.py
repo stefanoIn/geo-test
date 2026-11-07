@@ -1,4 +1,4 @@
-﻿"""Run the remaining TerraMind trials sequentially in separate processes."""
+"""Run the remaining TerraMind trials sequentially in separate processes."""
 
 import subprocess
 import sys
@@ -19,7 +19,7 @@ CONFIGS = [
 ]
 
 if __name__ == "__main__":
-    project_dir = Path(__file__).resolve().parent
+    project_dir = Path(__file__).resolve().parents[2]
     for config in CONFIGS:
         if not (project_dir / config).is_file():
             raise FileNotFoundError(config)
