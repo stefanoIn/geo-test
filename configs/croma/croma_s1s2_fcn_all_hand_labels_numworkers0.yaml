@@ -1,0 +1,75 @@
+experiment:
+  name: croma_s1s2_fcn_all_hand_labels
+  seed: 234
+
+dataset:
+  name: sen1floods11
+  modalities: [sar, optical]
+  train_csv: data/sen1floods11/splits/all_hand_labels/flood_train_data.csv
+  val_csv: data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv
+  test_csv: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv
+  bolivia_csv: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv
+
+model:
+  name: croma
+  size: large
+  checkpoint: pretrained_models/CROMA_large.pt
+
+  modality: both
+  image_resolution: 120
+  freeze_encoder: true
+
+adapter:
+  name: token_to_spatial
+  feature_key: tokens
+  grid_size: null
+
+head:
+  name: fcn
+  in_channels: 1024
+  num_classes: 2
+
+preprocessing:
+  normalization:
+    method: two_sigma_stretch
+    statistics: training_dataset
+    use_8_bit: false
+  band_indices:
+    sar: [0, 1]
+    # CROMA expects 12 S2 bands; drop B10 from Sen1Floods11 L1C.
+    optical: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12]
+  crop_size: 120
+
+training:
+  epochs: 3
+  batch_size: 8
+  num_workers: 0
+  validate_every: 2
+  loss:
+    name: cross_entropy
+    ignore_index: 255
+    class_weights: [1.0, 8.0]
+  optimizer:
+    name: adamw
+    learning_rate: 0.0005
+    weight_decay: 0.01
+  scheduler:
+    name: cosine_annealing_warm_restarts
+    t0_epochs: 10  # Converted to batches: T_0 = len(train_loader) * 10
+    t_mult: 2
+    eta_min: 0.0
+
+evaluation:
+  aw_pw_fw: true  # JRC-based all/permanent/flood water IoU
+  batch_size: 1
+  tile_size: 120
+  stride: 60   # Overlapping windows like the original training notebooks
+  tile_batch_size: 8
+  class_names: [non_water, water]
+  return_per_sample: true
+  sample_id_key: chip_id
+  checkpoint_metric: iou
+  checkpoint_class: 1  # Select best checkpoint on water IoU (not test IoU)
+
+output:
+  directory: runs/sen1floods11/croma/fcn_s1s2

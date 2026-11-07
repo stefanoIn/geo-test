@@ -1,0 +1,97 @@
+# Copy this file to configs/<model>/<experiment>.yaml and fill every TODO.
+# Blank values are YAML null: required TODO fields must be filled before running.
+# Run from GeoTest: python run.py --path configs/<model>/<experiment>.yaml
+# Paths are relative to GeoTest. Keep all top-level sections.
+# Optional fields may be removed; supported choices are listed below.
+
+experiment:
+  name:  # TODO: unique descriptive experiment name
+  seed: 234
+
+dataset:
+  name: sen1floods11  # Currently the only implemented dataset
+  modalities: []  # TODO: [sar], [optical], or [sar, optical]
+  train_csv:  # TODO: e.g. data/sen1floods11/splits/all_hand_labels/flood_train_data.csv
+  val_csv:  # TODO: e.g. data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv
+  # Optional held-out splits: uncomment to evaluate after training.
+  # test_csv: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv
+  # bolivia_csv: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv
+
+model:
+  name:  # TODO: croma | terramind_v1_large
+  checkpoint:  # TODO: e.g. pretrained_models/CROMA_large.pt
+  size:  # TODO: base | large; must match checkpoint and model variant
+  freeze_encoder: true  # false trains the encoder too
+
+  # CROMA only: uncomment and choose the matching modality.
+  # modality: SAR  # SAR for [sar], optical for [optical], both for both
+  # image_resolution: 120  # Must equal crop_size and evaluation.tile_size
+
+  # TerraMind only: uncomment and retain only the selected inputs.
+  # modalities: [S1GRD, S2L1C]
+  # input_mapping:
+  #   sar: S1GRD
+  #   optical: S2L1C
+  # merge_method: mean
+  # Native modality names must describe your actual data product.
+
+adapter:
+  name: token_to_spatial
+  feature_key: tokens
+  grid_size: null  # Infer a square grid from tokens
+
+head:
+  name: fcn  # Currently the only implemented head
+  in_channels:  # TODO: encoder output width; 1024 for current large/mean configs
+  num_classes: 2  # Sen1Floods11: non-water=0, water=1
+
+preprocessing:
+  normalization:
+    method:  # TODO: zscore | two_sigma_stretch
+    statistics:  # TODO: training_dataset | pretraining-fixed
+    # pretraining-fixed currently supplies TerraMind statistics, not CROMA.
+    use_8_bit: false
+  band_indices: {}  # Replace {} with the indented mapping below, or omit this field
+    # Uncomment the inputs used; indices are zero-based.
+    # sar: [0, 1]
+    # Optical CROMA: exclude B10 from Sen1Floods11 S2 L1C.
+    # optical: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12]
+    # Optical TerraMind S2L1C: use all 13 bands instead.
+    # optical: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+  crop_size:  # TODO: training crop side length, e.g. 120
+
+training:
+  epochs:  # TODO: e.g. 100
+  batch_size:  # TODO: training samples per optimizer update, e.g. 16
+  num_workers: 0  # Applies to training AND evaluation loaders; benchmark 0/2/4/8
+  validate_every: 5  # Final epoch is always validated too
+  loss:
+    name: cross_entropy  # Currently the only implemented loss
+    ignore_index: 255  # Required ignore value for this dataset
+    class_weights: null  # Unweighted; alternatively [1.0, 8.0], in class order
+  optimizer:
+    name: adamw  # adamw | adam | sgd
+    learning_rate:  # TODO: e.g. 0.0005
+    weight_decay: 0.01
+    # momentum: 0.9  # SGD only
+  scheduler:
+    name: none  # Or cosine_annealing_warm_restarts with the fields below
+    # t0_epochs: 10
+    # t_mult: 2
+    # eta_min: 0.0
+
+evaluation:
+  batch_size: 1  # Full images loaded together
+  tile_size:  # TODO: e.g. 120; CROMA requires its configured image_resolution
+  stride:  # TODO: e.g. 60 for overlapping 120-pixel windows
+  tile_batch_size: 8  # Windows passed through the model together
+  class_names: [non_water, water]
+  return_per_sample: true
+  sample_id_key: chip_id
+  aw_pw_fw: false  # true loads JRCWaterHand references and adds AW/PW/FW IoU
+  checkpoint_metric: iou  # iou (selected class) | miou (mean over classes)
+  checkpoint_class: 1  # Water; used only when checkpoint_metric is iou
+
+output:
+  directory:  # TODO: e.g. runs/sen1floods11/croma/fcn_s1
+  # Each invocation creates its own run subdirectory here.
