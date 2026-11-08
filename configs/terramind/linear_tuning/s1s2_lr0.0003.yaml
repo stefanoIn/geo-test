@@ -1,6 +1,7 @@
-# Tuned FCN: 100 epochs, unweighted CE, validation-selected checkpoint.
+# Linear probing: 25 epochs, cosine decay without restarts, validation mIoU selection.
+# AdamW uses its standard betas (0.9, 0.999). Test and Bolivia are excluded.
 experiment:
-  name: croma_s1s2_fcn_tuned_unweighted_e100
+  name: terramind_s1s2_linear_cosine_lr0.0003_e25
   seed: 234
 dataset:
   name: sen1floods11
@@ -9,27 +10,30 @@ dataset:
   - optical
   train_csv: data/sen1floods11/splits/all_hand_labels/flood_train_data.csv
   val_csv: data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv
-  test_csv: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv
-  bolivia_csv: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv
 model:
-  name: croma
+  name: terramind_v1_large
   size: large
-  checkpoint: pretrained_models/CROMA_large.pt
-  modality: both
-  image_resolution: 120
+  checkpoint: pretrained_models/TerraMind_v1_large.pt
+  modalities:
+  - S1GRD
+  - S2L1C
+  input_mapping:
+    sar: S1GRD
+    optical: S2L1C
+  merge_method: mean
   freeze_encoder: true
 adapter:
   name: token_to_spatial
   feature_key: tokens
   grid_size: null
 head:
-  name: fcn
+  name: linear_segmentation
   in_channels: 1024
   num_classes: 2
 preprocessing:
   normalization:
-    method: two_sigma_stretch
-    statistics: training_dataset
+    method: zscore
+    statistics: pretraining_fixed
     use_8_bit: false
   band_indices:
     sar:
@@ -46,14 +50,14 @@ preprocessing:
     - 7
     - 8
     - 9
+    - 10
     - 11
     - 12
-  crop_size: 120
+  crop_size: 128
 training:
-  epochs: 100
-  batch_size: 8
-  num_workers: 2
-  validate_every: 5
+  epochs: 25
+  batch_size: 1
+  num_workers: 0
   loss:
     name: cross_entropy
     ignore_index: 255
@@ -63,21 +67,20 @@ training:
     learning_rate: 0.0003
     weight_decay: 0.01
   scheduler:
-    name: cosine_annealing  # No restarts; horizon follows training.epochs.
+    name: cosine_annealing
     eta_min: 0.0
-
+  validate_every: 5
 evaluation:
   aw_pw_fw: true
   batch_size: 1
-  tile_size: 120
-  stride: 60
+  tile_size: 128
+  stride: 85
   tile_batch_size: 8
   class_names:
   - non_water
   - water
   return_per_sample: true
   sample_id_key: chip_id
-  checkpoint_metric: iou
-  checkpoint_class: 1
+  checkpoint_metric: miou
 output:
-  directory: runs/sen1floods11/croma/fcn_tuned/s1s2
+  directory: runs/sen1floods11/terramind/linear_tuning/s1s2/lr0.0003_e25
