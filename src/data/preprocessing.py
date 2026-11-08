@@ -56,13 +56,13 @@ class NormalizeFromStats:
         preprocessing = config["preprocessing"]
         normalization = preprocessing["normalization"]
         policy = normalization["statistics"]
-        if policy == "pretraining-fixed":
+        if policy == "pretraining_fixed":
             model = config["model"]
             if model["name"] not in {"terramind_v1_base", "terramind_v1_large"}:
-                raise ValueError("pretraining-fixed currently supports TerraMind v1 only")
+                raise ValueError("pretraining_fixed currently supports TerraMind v1 only")
             method = normalization.get("method", "zscore")
             if method != "zscore":
-                raise ValueError("pretraining-fixed requires method: zscore")
+                raise ValueError("pretraining_fixed requires method: zscore")
             mapping = model.get("input_mapping") or {
                 name: name for name in model["modalities"]
             }

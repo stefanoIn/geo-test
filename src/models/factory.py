@@ -3,8 +3,12 @@
 from pathlib import Path
 
 from src.adapters.token_to_spatial import TokenToSpatial
-from src.heads.fcn import FCNHead
 from src.models.dense_prediction import DensePredictionModel
+
+
+# heads
+from src.heads.fcn import FCNHead
+from src.heads.linear import LinearSegmentationHead
 
 
 def build_model(config: dict) -> DensePredictionModel:
@@ -79,10 +83,17 @@ def build_model(config: dict) -> DensePredictionModel:
         grid_size=ac.get("grid_size"),
     )
 
-    if hc["name"] != "fcn":
+    if hc["name"] == "fcn":
+        head = FCNHead(
+            in_channels=hc["in_channels"],
+            num_classes=hc["num_classes"],
+        )        
+    elif hc["name"] == "linear_segmentation":
+        head = LinearSegmentationHead(
+            in_channels=hc["in_channels"],
+            num_classes=hc["num_classes"],
+        )
+    else:
         raise ValueError(f"Unknown prediction head: {hc['name']!r}")
-    head = FCNHead(
-        in_channels=hc["in_channels"],
-        num_classes=hc["num_classes"],
-    )
+    
     return DensePredictionModel(encoder=encoder, adapter=adapter, head=head)

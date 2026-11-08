@@ -71,7 +71,7 @@ def load_config(path):
         "training.loss.name": ("cross_entropy",),
         "training.optimizer.name": ("adamw", "adam", "sgd"),
         "preprocessing.normalization.method": ("zscore", "two_sigma_stretch"),
-        "preprocessing.normalization.statistics": ("training_dataset", "pretraining-fixed"),
+        "preprocessing.normalization.statistics": ("training_dataset", "pretraining_fixed"),
     }
     for field, available in choices.items():
         value = config

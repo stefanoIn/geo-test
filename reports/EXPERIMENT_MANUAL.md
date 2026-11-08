@@ -84,7 +84,7 @@ model:
 preprocessing:
   normalization:
     method: zscore
-    statistics: pretraining-fixed
+    statistics: pretraining_fixed
     use_8_bit: false
 ```
 
@@ -439,7 +439,7 @@ These fields are interpreted by the modules and the reference runner. YAML does 
 | head.num_classes | 2 for non-water/water |
 | preprocessing.crop_size | Training window; square recommended with grid_size: null |
 | preprocessing.band_indices | Zero-based raw-band selection per dataset key |
-| normalization.statistics | training_dataset or pretraining-fixed, inside preprocessing |
+| normalization.statistics | training_dataset or pretraining_fixed, inside preprocessing |
 | normalization.method | zscore or two_sigma_stretch; fixed policy requires zscore |
 | normalization.use_8_bit | Optional quantization for stretch, false for zscore |
 | training.epochs | Outer-loop epoch count |

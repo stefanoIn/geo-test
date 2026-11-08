@@ -170,7 +170,7 @@ normalizer = NormalizeFromStats.from_config(config, training_statistics=statisti
 
 ```
 
-CROMA optical input uses 12 bands, so this removes B10 from the 13-band Sen1Floods11 L1C tensor. Removing a band does not convert L1C to L2A. The YAML supplies band_indices, normalization method and use_8_bit. from_config applies those settings; pretraining-fixed is currently supported for TerraMind, not CROMA. The stretch computes clip((x-(mean-2*std))/(4*std),0,1). Statistics are calculated from finite training-image values, not validation/test data. Invalid image pixels are filled with zero after normalization; the target mask is not automatically changed.
+CROMA optical input uses 12 bands, so this removes B10 from the 13-band Sen1Floods11 L1C tensor. Removing a band does not convert L1C to L2A. The YAML supplies band_indices, normalization method and use_8_bit. from_config applies those settings; pretraining_fixed is currently supported for TerraMind, not CROMA. The stretch computes clip((x-(mean-2*std))/(4*std),0,1). Statistics are calculated from finite training-image values, not validation/test data. Invalid image pixels are filled with zero after normalization; the target mask is not automatically changed.
 
 `NormalizeFromStats` parameters:
 
