@@ -54,9 +54,7 @@ training:
     learning_rate: 0.0005
     weight_decay: 0.01
   scheduler:
-    name: cosine_annealing_warm_restarts
-    t0_epochs: 10  # Converted to batches: T_0 = len(train_loader) * 10
-    t_mult: 2
+    name: cosine_annealing  # No restarts; horizon follows training.epochs.
     eta_min: 0.0
 
 evaluation: 

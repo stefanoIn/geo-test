@@ -81,8 +81,13 @@ def load_config(path):
             raise ValueError(f"Unsupported {field}: {value!r}. Available: {', '.join(available)}")
     scheduler = config["training"].get("scheduler")
     if scheduler is not None and (not isinstance(scheduler, dict) or
-            scheduler.get("name") not in {"none", "cosine_annealing_warm_restarts"}):
-        raise ValueError("training.scheduler.name must be none or cosine_annealing_warm_restarts")
+            scheduler.get("name") not in {"none", "cosine_annealing", "cosine_annealing_warm_restarts"}):
+        raise ValueError("training.scheduler.name must be none, cosine_annealing or cosine_annealing_warm_restarts")
+    if scheduler and scheduler["name"] == "cosine_annealing":
+        eta_min = scheduler.get("eta_min", 0.0)
+        if (not isinstance(eta_min, (int, float)) or not np.isfinite(eta_min)
+                or not 0 <= eta_min <= config["training"]["optimizer"]["learning_rate"]):
+            raise ValueError("training.scheduler.eta_min must be between zero and the initial learning rate")
     if scheduler and scheduler["name"] == "cosine_annealing_warm_restarts":
         if type(scheduler.get("t0_epochs")) is not int or scheduler["t0_epochs"] < 1:
             raise ValueError("training.scheduler.t0_epochs must be a positive integer")
@@ -216,15 +221,25 @@ def build_optimizer(config, model):
 
 # The trainer steps after optimizer updates, so convert the YAML epoch period to batches.
 # Skipped all-ignore batches do not advance the schedule.
-def build_scheduler(config, optimizer, batches_per_epoch):
+def build_scheduler(config, optimizer, batches_per_epoch, epochs=None):
     
     config = config or {"name": "none"}
     
     if config["name"] == "none":
         return None
     
+    if config["name"] == "cosine_annealing":
+        if type(epochs) is not int or epochs < 1 or batches_per_epoch < 1:
+            raise ValueError("Cosine annealing requires positive epochs and batches_per_epoch")
+        # Decay over the configured training budget, with no warm restarts.
+        # The trainer advances this after each optimizer update; ignored batches do not advance it.
+        return torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=epochs * batches_per_epoch,
+            eta_min=config.get("eta_min", 0.0),
+        )
+
     if config["name"] != "cosine_annealing_warm_restarts":
-        raise ValueError("Supported schedulers: none, cosine_annealing_warm_restarts")
+        raise ValueError("Supported schedulers: none, cosine_annealing, cosine_annealing_warm_restarts")
     
     return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
         optimizer, T_0=int(config["t0_epochs"] * batches_per_epoch),

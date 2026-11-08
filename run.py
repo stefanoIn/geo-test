@@ -51,7 +51,8 @@ def run_experiment(config_path=CONFIG_PATH, device=None):
     model = build_model(config).to(device)
     criterion = build_loss(config["training"]["loss"], device)
     optimizer = build_optimizer(config["training"]["optimizer"], model)
-    scheduler = build_scheduler(config["training"].get("scheduler"), optimizer, len(loaders["train"]))
+    scheduler = build_scheduler(config["training"].get("scheduler"), optimizer,
+                                len(loaders["train"]), epochs=config["training"]["epochs"])
 
     # Give each invocation its own directory to preserve previous experiments.
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:8]

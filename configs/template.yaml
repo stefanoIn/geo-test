@@ -75,10 +75,8 @@ training:
     weight_decay: 0.01
     # momentum: 0.9  # SGD only
   scheduler:
-    name: none  # Or cosine_annealing_warm_restarts with the fields below
-    # t0_epochs: 10
-    # t_mult: 2
-    # eta_min: 0.0
+    name: cosine_annealing  # No restarts; horizon follows training.epochs.
+    eta_min: 0.0
 
 evaluation:
   batch_size: 1  # Full images loaded together

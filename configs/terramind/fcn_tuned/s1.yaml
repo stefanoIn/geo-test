@@ -52,7 +52,9 @@ training:
     learning_rate: 0.005
     weight_decay: 0.01
   scheduler:
-    name: none
+    name: cosine_annealing  # No restarts; horizon follows training.epochs.
+    eta_min: 0.0
+
 evaluation:
   aw_pw_fw: true
   batch_size: 1

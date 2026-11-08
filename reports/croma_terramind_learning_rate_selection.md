@@ -1,4 +1,4 @@
-﻿# CROMA and TerraMind: learning-rate selection
+# CROMA and TerraMind: learning-rate selection
 
 Recorded: 7 November 2026.
 
@@ -28,7 +28,7 @@ These are provisional choices from one seed and a short training budget. Longer 
 
 ## Saved evidence
 
-- [CROMA validation ranking](../runs/sen1floods11/croma/tuning/validation_ranking.csv)
-- [TerraMind trial summaries](../runs/sen1floods11/terramind/tuning_manual/)
+- [Single scientific tuning archive](learning_rate_tuning_archive.json): run index, complete saved metrics, configurations, histories, provenance, splits, logs, code and environment snapshot.
+- Original tuning run folders, trained tuning checkpoints and tuning entry points were removed on 8 November 2026. Reproduction requires retraining; the archive explains prerequisites and limitations.
 
 For each model, mIoU in the table is measured at the checkpoint selected by Water IoU, rather than independently selecting the highest mIoU.
