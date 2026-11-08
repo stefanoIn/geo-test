@@ -45,21 +45,25 @@ preprocessing:
     - 11
     - 12
   crop_size: 120
+  
 training:
   epochs: 2
   batch_size: 8
   num_workers: 2
   validate_every: 1
+
   loss:
     name: cross_entropy
     ignore_index: 255
     class_weights: null
+
   optimizer:
     name: adamw
     learning_rate: 0.001
     weight_decay: 0.01
+
   scheduler:
-    name: cosine_annealing  # No restarts; horizon follows training.epochs.
+    name: cosine_annealing
     eta_min: 0.00001
 
 evaluation:
