@@ -218,7 +218,7 @@ def build_preprocessing(config):
 # A module-level callable also supports DataLoader worker serialization.
 class TrainingPreprocess:
     
-    def __init__(self, normalizer, crop_size, seed=0):
+    def __init__(self, normalizer, crop_size, seed=42):
         self.normalizer = normalizer
         self.crop_size = crop_size
         self.seed = seed
@@ -248,7 +248,7 @@ def experiment_random_seeds(seed):
 def build_loaders(config, normalizer):
     
     loaders, seen = {}, {}
-    seeds = experiment_random_seeds(config["experiment"].get("seed", 0))
+    seeds = experiment_random_seeds(config["experiment"].get("seed", 42))
     
     for split in ("train", "val", "test", "bolivia"):
         

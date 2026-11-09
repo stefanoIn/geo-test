@@ -33,7 +33,7 @@ def run_experiment(config_path=CONFIG_PATH, device=None):
     
     # Validate the YAML before loading data or allocating model memory.
     config = load_config(config_path)
-    seed = config["experiment"].get("seed", 0)
+    seed = config["experiment"].get("seed", 42)
     random_seeds = experiment_random_seeds(seed)
     
     # Seed sampling and initialization; CUDA operations may still be nondeterministic.
