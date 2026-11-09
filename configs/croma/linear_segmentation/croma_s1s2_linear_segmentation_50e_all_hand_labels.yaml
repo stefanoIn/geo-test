@@ -1,6 +1,6 @@
 experiment:
   name: croma_s1s2_linear_segmentation_50e_all_hand_labels
-  seed: 234
+  seed: 42
 
 dataset:
   name: sen1floods11
@@ -43,7 +43,7 @@ training:
   epochs: 50
   batch_size: 8
   num_workers: 0
-  validate_every: 2
+  validate_every: 1
   loss:
     name: cross_entropy
     ignore_index: 255

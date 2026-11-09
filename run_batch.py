@@ -6,12 +6,13 @@ from pathlib import Path
 
 # Each YAML defines the full experiment. Re-running a trial creates a new run folder.
 CONFIGS = [
+    "configs/terramind/linear_segmentation/terramind_s1s2_linear_segmentation_50e_all_hand_labels.yaml",
     "configs/croma/linear_segmentation/croma_s1s2_linear_segmentation_50e_all_hand_labels.yaml",
-    "configs/terramind/linear_segmentation/terramind_s1s2_linear_segmentation_50e_all_hand_labels.yaml"
+
 ]
 
 if __name__ == "__main__":
-    project_dir = Path(__file__).resolve().parents[1]
+    project_dir = Path(__file__).resolve().parent
     for config in CONFIGS:
         if not (project_dir / config).is_file():
             raise FileNotFoundError(config)

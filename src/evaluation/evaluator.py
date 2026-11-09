@@ -81,6 +81,7 @@ def evaluate(
     total_loss = 0.0
     total_loss_weight = 0.0
     next_sample_index = 0
+    excluded_all_ignore = 0
     previous_mode = model.training
     model.eval()
 
@@ -148,12 +149,14 @@ def evaluate(
                     )
                     sample_metrics.update(predictions[idx], targets[idx])
                     row = {"sample_id": sample_id, **sample_metrics.compute()}
+                    row["excluded_all_ignore"] = row["valid_pixels"] == 0
                     if category_rows is not None:
                         row["aw_pw_fw"] = category_rows[idx]
                     per_sample.append(row)
 
             next_sample_index += targets.shape[0]
             valid = targets != ignore_index
+            excluded_all_ignore += int((~valid.flatten(1).any(dim=1)).sum().item())
             if criterion is not None and bool(valid.any()):
                 loss = criterion(logits, targets)
                 if loss.ndim != 0 or not math.isfinite(float(loss.item())):
@@ -183,6 +186,8 @@ def evaluate(
     if water_metrics is not None:
         result["aw_pw_fw"] = water_metrics.compute()
     result["num_samples"] = next_sample_index
+    result["evaluated_samples"] = next_sample_index - excluded_all_ignore
+    result["excluded_all_ignore_samples"] = excluded_all_ignore
     if return_per_sample:
         result["per_sample"] = per_sample
     return result

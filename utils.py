@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import yaml
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, RandomSampler, get_worker_info
 
 from src.data.datasets.sen1floods11 import Sen1Floods11Dataset
 from src.data.preprocessing import NormalizeFromStats
@@ -218,17 +218,37 @@ def build_preprocessing(config):
 # A module-level callable also supports DataLoader worker serialization.
 class TrainingPreprocess:
     
-    def __init__(self, normalizer, crop_size):
+    def __init__(self, normalizer, crop_size, seed=0):
         self.normalizer = normalizer
         self.crop_size = crop_size
+        self.seed = seed
+        self.generator = None
+        self.worker_seed = None
 
     def __call__(self, sample):
-        return self.normalizer(random_crop(sample, self.crop_size))
+        worker = get_worker_info()
+        # Worker seeds come from the training loader's dedicated generator.
+        # Recreated workers get new seeds each epoch; the main process keeps
+        # advancing its crop generator across epochs when num_workers=0.
+        worker_seed = worker.seed if worker is not None else 0
+        if self.generator is None or self.worker_seed != worker_seed:
+            self.generator = torch.Generator().manual_seed((self.seed + worker_seed) % (2**63))
+            self.worker_seed = worker_seed
+        return self.normalizer(random_crop(sample, self.crop_size, generator=self.generator))
+
+
+def experiment_random_seeds(seed):
+    """Independent streams derived reproducibly from experiment.seed."""
+    names = ("model", "shuffle", "crops", "train_loader", "val_loader",
+             "test_loader", "bolivia_loader")
+    return {name: (seed + offset) % (2**63) for offset, name in enumerate(names)}
+
 
 # Assemble loaders with random training crops and full-chip evaluation inputs.
 def build_loaders(config, normalizer):
     
     loaders, seen = {}, {}
+    seeds = experiment_random_seeds(config["experiment"].get("seed", 0))
     
     for split in ("train", "val", "test", "bolivia"):
         
@@ -237,7 +257,8 @@ def build_loaders(config, normalizer):
                 raise ValueError(f"Missing {split}_csv")
             continue
         
-        transform = (TrainingPreprocess(normalizer, config["preprocessing"]["crop_size"])
+        transform = (TrainingPreprocess(normalizer, config["preprocessing"]["crop_size"],
+                                        seed=seeds["crops"])
                      if split == "train" else normalizer)
         
         dataset = build_dataset(config, split, preprocess_func=transform)
@@ -255,7 +276,9 @@ def build_loaders(config, normalizer):
             dataset,
             batch_size=(config["training"]["batch_size"] if split == "train"
                         else config["evaluation"].get("batch_size", 1)),
-            shuffle=(split == "train"),
+            sampler=(RandomSampler(dataset, generator=torch.Generator().manual_seed(seeds["shuffle"]))
+                     if split == "train" else None),
+            generator=torch.Generator().manual_seed(seeds[f"{split}_loader"]),
             num_workers=config["training"].get("num_workers", 0),
         )
     return loaders

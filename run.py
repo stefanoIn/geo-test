@@ -20,7 +20,7 @@ from src.evaluation.evaluator import evaluate, save_evaluation_report
 from training.trainer import train_one_epoch
 from training.checkpoints import save_checkpoint, load_checkpoint
 from utils import (
-    load_config, build_dataset, build_preprocessing, build_loaders,
+    load_config, build_dataset, build_preprocessing, build_loaders, experiment_random_seeds,
     build_loss, build_optimizer, build_scheduler, file_sha256, write_json, build_run_summary, save_training_plots, save_test_plots, format_iou_metrics,
 )
 
@@ -34,11 +34,12 @@ def run_experiment(config_path=CONFIG_PATH, device=None):
     # Validate the YAML before loading data or allocating model memory.
     config = load_config(config_path)
     seed = config["experiment"].get("seed", 0)
+    random_seeds = experiment_random_seeds(seed)
     
     # Seed sampling and initialization; CUDA operations may still be nondeterministic.
     random.seed(seed)
     np.random.seed(seed)
-    torch.manual_seed(seed)
+    torch.manual_seed(random_seeds["model"])
     
     device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
     
@@ -72,6 +73,8 @@ def run_experiment(config_path=CONFIG_PATH, device=None):
         "pretrained_sha256": file_sha256(config["model"]["checkpoint"]),
         "split_sha256": {split: file_sha256(config["dataset"][f"{split}_csv"]) for split in loaders},
         "seed": seed,
+        "random_seeds": random_seeds,
+        "randomness_protocol": "independent_streams_v1; worker crop seed = crops + worker seed modulo 2**63",
     })
     
     options = config["evaluation"]

@@ -148,8 +148,8 @@ class SegmentationMetrics:
 class WaterCategoryMetrics:
     """Legacy Sen1Floods11 AW/PW/FW: retain background, mask other water.
 
-    Legacy per-chip IoU uses epsilon=1e-7 (empty unions score 1,
-    including all-ignore chips). Pooled IoU has no smoothing.
+    Per-chip IoU uses epsilon=1e-7 (valid empty unions score 1).
+    All-ignore chips are excluded. Pooled IoU has no smoothing.
     """
 
     def __init__(self, ignore_index=255):
@@ -169,7 +169,9 @@ class WaterCategoryMetrics:
                 labels[(target == 1) & (permanent_water == 0)] = self.ignore_index
             elif category == "FW":
                 labels[(target == 1) & (permanent_water == 1)] = self.ignore_index
-            included = not (category != "AW" and originally_wet and not bool((labels == 1).any()))
+            included = bool((labels != self.ignore_index).any()) and not (
+                category != "AW" and originally_wet and not bool((labels == 1).any())
+            )
             metrics = SegmentationMetrics(2, self.ignore_index)
             metrics.update(prediction, labels)
             counts = metrics.compute()["binary_counts"]
@@ -192,5 +194,5 @@ class WaterCategoryMetrics:
                 "mean_chip_iou": sum(row["chip_iou"] for row in included) / len(included) if included else None,
                 "total_iou": counts["tp"] / union if union else None, **counts,
             }
-        return {"protocol": "legacy_sen1floods11; per-chip epsilon=1e-7; empty union scores 1; other water ignored",
+        return {"protocol": "sen1floods11_exclude_all_ignore_v1; per-chip epsilon=1e-7; valid empty union scores 1; other water ignored; all-ignore chips excluded",
                 "summary": summary}
