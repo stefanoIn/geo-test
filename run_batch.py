@@ -1,5 +1,3 @@
-"""Run the six LR=0.005 linear-probe follow-up trials sequentially in fresh Python processes."""
-
 import subprocess
 import sys
 from pathlib import Path

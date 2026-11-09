@@ -2,7 +2,6 @@
 
 import torch
 
-
 def random_crop(sample, size, generator=None):
     """
     Apply the same random crop to all spatial tensors.
