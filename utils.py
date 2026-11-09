@@ -371,7 +371,9 @@ def build_run_summary(config, history, evaluations=None, checkpoint_sha256=None)
             "history_path": "metrics/history.json",
         },
         "best_validation_observed": {
-            "miou": peak("miou"), "water_iou": peak("iou", 1),
+            "miou": peak("miou"),
+            "iou_per_class": [peak("iou", index) for index in range(config["head"]["num_classes"])],
+            **({"water_iou": peak("iou", 1)} if config["dataset"]["name"] == "sen1floods11" else {}),
         },
         "best_checkpoint": best_checkpoint,
         "evaluation_of_best_checkpoint": {
@@ -379,3 +381,105 @@ def build_run_summary(config, history, evaluations=None, checkpoint_sha256=None)
             for split, results in (evaluations or {}).items()
         },
     }
+
+
+# Save curves inside this run; use the same checkpoint selection as summary.json.
+def save_training_plots(run_dir, config, history):
+    from matplotlib.figure import Figure
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+
+    if not history:
+        return
+    validated = [row for row in history if row.get("validation") is not None]
+    selected = build_run_summary(config, history)["best_checkpoint"]
+    plot_dir = Path(run_dir) / "plots"
+    plot_dir.mkdir(parents=True, exist_ok=True)
+
+    figure = Figure(figsize=(12, 4.5), layout="constrained")
+    FigureCanvasAgg(figure)
+    loss_ax, iou_ax = figure.subplots(1, 2)
+    loss_ax.plot([row["epoch"] for row in history],
+                 [row["train_loss"] for row in history], label="Training loss")
+    loss_rows = [row for row in validated if row["validation"].get("loss") is not None]
+    loss_ax.plot([row["epoch"] for row in loss_rows],
+                 [row["validation"]["loss"] for row in loss_rows],
+                 marker="o", label="Validation loss")
+    iou_rows = [row for row in validated if row["validation"].get("miou") is not None]
+    iou_ax.plot([row["epoch"] for row in iou_rows],
+                [100 * row["validation"]["miou"] for row in iou_rows],
+                marker="o", label="Validation mIoU")
+    loss_ax.set(title="Training and validation loss", ylabel="Loss")
+    iou_ax.set(title="Validation mIoU", ylabel="mIoU (%)", ylim=(0, 100))
+
+    for axis in (loss_ax, iou_ax):
+        if selected is not None:
+            axis.axvline(selected["epoch"], color="tab:red", linestyle="--",
+                         label=f"Selected checkpoint: epoch {selected['epoch']}")
+        axis.set_xlabel("Epoch")
+        axis.grid(alpha=0.25)
+        axis.legend()
+    figure.suptitle(config["experiment"]["name"])
+    for extension in ("png", "pdf"):
+        figure.savefig(plot_dir / f"training_curves.{extension}", dpi=160)
+    figure.clear()
+
+
+# Plot held-out scores without recomputing metrics or selecting on test data.
+def save_test_plots(run_dir, config, split, results, selected_epoch):
+    from matplotlib.figure import Figure
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+
+    categories = (results.get("aw_pw_fw", {}).get("summary", {})
+                  if config["dataset"]["name"] == "sen1floods11" else {})
+    figure = Figure(figsize=(15 if categories else 5, 4.5), layout="constrained")
+    FigureCanvasAgg(figure)
+    axes = figure.subplots(1, 3 if categories else 1, squeeze=False)[0]
+
+    def bars(axis, labels, values, title):
+        heights = [100 * value if value is not None else 0 for value in values]
+        rectangles = axis.bar(labels, heights, color="tab:blue")
+        axis.bar_label(rectangles, labels=[f"{100 * value:.2f}%" if value is not None
+                                          else "Undefined" for value in values], padding=3)
+        axis.set(title=title, ylabel="IoU (%)", ylim=(0, 110))
+        axis.set_yticks(range(0, 101, 20))
+        axis.set_axisbelow(True)
+        axis.grid(axis="y", alpha=0.25)
+
+    names = metric_class_names(config, results)
+    bars(axes[0], ["mIoU"] + names,
+         [results["miou"]] + list(results["iou_per_class"]), "mIoU and per-class IoU")
+    axes[0].tick_params(axis="x", labelrotation=45)
+    figure.set_size_inches(max(5, 0.8 * (len(names) + 1)) + (10 if categories else 0), 5.5)
+    if categories:
+        labels = [name for name in ("AW", "PW", "FW") if name in categories]
+        bars(axes[1], labels, [categories[name]["mean_chip_iou"] for name in labels],
+             "Mean per-chip Water IoU")
+        bars(axes[2], labels, [categories[name]["total_iou"] for name in labels],
+             "Pooled Water IoU by category")
+    figure.suptitle(f"{config['experiment']['name']} | {split} | Selected epoch {selected_epoch}")
+    plot_dir = Path(run_dir) / "plots"
+    plot_dir.mkdir(parents=True, exist_ok=True)
+    for extension in ("png", "pdf"):
+        figure.savefig(plot_dir / f"{split}_metrics.{extension}", dpi=160)
+    figure.clear()
+
+
+def metric_class_names(config, metrics):
+    """Use saved/YAML class names, falling back to numbered classes."""
+    count = len(metrics["iou_per_class"])
+    names = metrics.get("class_names") or config["evaluation"].get("class_names")
+    if names is None:
+        return [f"Class {index}" for index in range(count)]
+    if len(names) != count:
+        raise ValueError("class_names must contain one name per evaluated class")
+    return list(names)
+
+
+def format_iou_metrics(config, metrics):
+    """Format aggregate and per-class IoU without assuming a water class."""
+    pairs = [("mIoU", metrics["miou"])] + list(zip(
+        [f"{name} IoU" for name in metric_class_names(config, metrics)],
+        metrics["iou_per_class"],
+    ))
+    return " | ".join(f"{name} {value:.4f}" if value is not None
+                      else f"{name} undefined" for name, value in pairs)

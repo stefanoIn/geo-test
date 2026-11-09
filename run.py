@@ -21,11 +21,11 @@ from training.trainer import train_one_epoch
 from training.checkpoints import save_checkpoint, load_checkpoint
 from utils import (
     load_config, build_dataset, build_preprocessing, build_loaders,
-    build_loss, build_optimizer, build_scheduler, file_sha256, write_json, build_run_summary,
+    build_loss, build_optimizer, build_scheduler, file_sha256, write_json, build_run_summary, save_training_plots, save_test_plots, format_iou_metrics,
 )
 
 # Select the experiment here; paths are relative to the project folder.
-CONFIG_PATH = Path("configs/croma/croma_s1s2_fcn_all_hand_labels.yaml")
+CONFIG_PATH = Path("")
 
 
 def run_experiment(config_path=CONFIG_PATH, device=None):
@@ -142,10 +142,13 @@ def run_experiment(config_path=CONFIG_PATH, device=None):
         write_json(run_dir / "metrics/history.json", history)
         # A compact overview stays available even before training finishes.
         write_json(run_dir / "summary.json", build_run_summary(config, history))
+        if validation is not None:
+            save_training_plots(run_dir, config, history)
         
         message = f"Epoch {epoch:03d}/{epochs} | LR {lr_start:.2e} | Train loss {loss:.4f}"
         if validation is not None:
-            message += f" | Water IoU {validation['iou_per_class'][1]:.4f} | mIoU {validation['miou']:.4f}" if validation['iou_per_class'][1] is not None else " | Water IoU undefined"
+            message += f" | Val loss {validation['loss']:.4f}"
+            message += " | " + format_iou_metrics(config, validation)
         print(message, flush=True)
 
     if not best_path.is_file():
@@ -173,7 +176,9 @@ def run_experiment(config_path=CONFIG_PATH, device=None):
             write_json(run_dir / "summary.json", build_run_summary(
                 config, history, evaluations, checkpoint_hash))
 
-            print(f"{split}: mIoU={results['miou']}, water IoU={results['iou_per_class'][1]}")
+            save_test_plots(run_dir, config, split, results, selected["epoch"])
+
+            print(f"{split}: {format_iou_metrics(config, results)}")
             if "aw_pw_fw" in results:
                 for category, values in results["aw_pw_fw"]["summary"].items():
                     print(f"  {category}: mean per-chip IoU={values['mean_chip_iou']}, "
