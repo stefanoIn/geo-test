@@ -1,24 +1,22 @@
 experiment:
-  name: terramind_v1_large_s1s2_fcn_all_hand_labels
+  name: croma_s1_fcn_all_hand_labels
   seed: 234
 
 dataset:
   name: sen1floods11
-  modalities: [sar, optical]
+  modalities: [sar]
   train_csv: data/sen1floods11/splits/all_hand_labels/flood_train_data.csv
   val_csv: data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv
   test_csv: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv
   bolivia_csv: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv
 
 model:
-  name: terramind_v1_large
+  name: croma
   size: large
-  checkpoint: pretrained_models/TerraMind_v1_large.pt
-  modalities: [S1GRD, S2L1C]
-  input_mapping:
-    sar: S1GRD
-    optical: S2L1C
-  merge_method: mean
+  checkpoint: pretrained_models/CROMA_large.pt
+
+  modality: SAR
+  image_resolution: 120
   freeze_encoder: true
 
 adapter:
@@ -33,37 +31,38 @@ head:
 
 preprocessing:
   normalization:
-    method: zscore
-    statistics: pretraining_fixed
+    method: two_sigma_stretch
+    statistics: training_dataset
     use_8_bit: false
   band_indices:
     sar: [0, 1]
-    # Sen1Floods11 S2 L1C: 13 channels, including B10.
-    optical: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-  crop_size: 128
+    # CROMA expects 12 S2 bands; drop B10 from Sen1Floods11 L1C.
+    optical: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12]
+  crop_size: 120
 
 training:
   epochs: 100
-  batch_size: 1  # Conservative default for an 8GB VRAM GPU; adjust after profiling.
+  batch_size: 8
   num_workers: 0
+  validate_every: 2
   loss:
     name: cross_entropy
     ignore_index: 255
     class_weights: [1.0, 8.0]
   optimizer:
     name: adamw
-    learning_rate: 0.0005
+    learning_rate: 0.003
     weight_decay: 0.01
   scheduler:
     name: cosine_annealing  # No restarts; horizon follows training.epochs.
     eta_min: 0.0
 
-evaluation:
-  aw_pw_fw: true  # JRC-based all/permanent/flood water IoU
+evaluation: 
+  aw_pw_fw: true
   batch_size: 1
-  tile_size: 128
-  stride: 64
-  tile_batch_size: 8
+  tile_size: 120
+  stride: 60
+  tile_batch_size: 1
   class_names: [non_water, water]
   return_per_sample: true
   sample_id_key: chip_id
@@ -71,4 +70,4 @@ evaluation:
   checkpoint_class: 1
 
 output:
-  directory: runs/sen1floods11/terramind/fcn_s1s2
+  directory: runs/sen1floods11/croma/fcn_s1

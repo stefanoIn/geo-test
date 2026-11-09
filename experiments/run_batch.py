@@ -1,4 +1,4 @@
-"""Run all 18 linear-probe LR trials sequentially in fresh Python processes."""
+"""Run the six LR=0.005 linear-probe follow-up trials sequentially in fresh Python processes."""
 
 import subprocess
 import sys
@@ -6,24 +6,8 @@ from pathlib import Path
 
 # Each YAML defines the full experiment. Re-running a trial creates a new run folder.
 CONFIGS = [
-    "configs/croma/linear_tuning/s1_lr0.0003.yaml",
-    "configs/croma/linear_tuning/s1_lr0.001.yaml",
-    "configs/croma/linear_tuning/s1_lr0.003.yaml",
-    "configs/croma/linear_tuning/s2_lr0.0003.yaml",
-    "configs/croma/linear_tuning/s2_lr0.001.yaml",
-    "configs/croma/linear_tuning/s2_lr0.003.yaml",
-    "configs/croma/linear_tuning/s1s2_lr0.0003.yaml",
-    "configs/croma/linear_tuning/s1s2_lr0.001.yaml",
-    "configs/croma/linear_tuning/s1s2_lr0.003.yaml",
-    "configs/terramind/linear_tuning/s1_lr0.0003.yaml",
-    "configs/terramind/linear_tuning/s1_lr0.001.yaml",
-    "configs/terramind/linear_tuning/s1_lr0.003.yaml",
-    "configs/terramind/linear_tuning/s2_lr0.0003.yaml",
-    "configs/terramind/linear_tuning/s2_lr0.001.yaml",
-    "configs/terramind/linear_tuning/s2_lr0.003.yaml",
-    "configs/terramind/linear_tuning/s1s2_lr0.0003.yaml",
-    "configs/terramind/linear_tuning/s1s2_lr0.001.yaml",
-    "configs/terramind/linear_tuning/s1s2_lr0.003.yaml"
+    "configs/croma/linear_segmentation/croma_s1s2_linear_segmentation_all_hand_labels.yaml",
+    "configs/terramind/linear_tuning/s1s2_lr0.005.yaml"
 ]
 
 if __name__ == "__main__":
