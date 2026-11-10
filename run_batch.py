@@ -4,9 +4,7 @@ from pathlib import Path
 
 # Each YAML defines the full experiment. Re-running a trial creates a new run folder.
 CONFIGS = [
-    "configs/croma/linear_segmentation/croma_s1s2_linear_segmentation_50e_all_hand_labels.yaml",
     "configs/terramind/linear_segmentation/terramind_s1s2_linear_segmentation_50e_all_hand_labels.yaml",
-
 ]
 
 if __name__ == "__main__":
