@@ -1,0 +1,27 @@
+Experiment setup (verified runtime objects)
+Experiment: terramind_s1s2_linear_segmentation_50e_all_hand_labels
+Model: terramind_v1_large | Encoder: TerraMindEncoder
+Native input: ('S2L1C',)
+Input mapping: {'optical': 'S2L1C'}
+Pretrained checkpoint: pretrained_models/TerraMind_v1_large.pt
+Head: LinearSegmentationHead | Adapter: TokenToSpatial
+Head structure: LinearSegmentationHead(
+  (classifier): Conv2d(1024, 2, kernel_size=(1, 1), stride=(1, 1))
+)
+Encoder parameters: 305,399,808 total, 0 trainable
+Head parameters: 2,050 trainable
+Device: cuda | GPU: NVIDIA GeForce RTX 3070
+Seed: 234 | Streams: {'model': 234, 'shuffle': 235, 'crops': 236, 'train_loader': 237, 'val_loader': 238, 'test_loader': 239, 'bolivia_loader': 240}
+Normalization: zscore | Bands: {'optical': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]}
+Data [train]: data/sen1floods11/splits/all_hand_labels/flood_train_data.csv | 252 samples | inputs=['optical'] | batch=8 | workers=0 | crop=128
+Data [val]: data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv | 89 samples | inputs=['optical'] | batch=1 | workers=0 | crop=None
+Data [test]: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv | 90 samples | inputs=['optical'] | batch=1 | workers=0 | crop=None
+Data [bolivia]: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv | 15 samples | inputs=['optical'] | batch=1 | workers=0 | crop=None
+Loss: CrossEntropyLoss | reduction=mean | weights=None | ignore_index=255
+Optimizer [0]: AdamW | LR=0.003 | weight_decay=0.01 | betas=(0.9, 0.999)
+Scheduler: {'class': 'torch.optim.lr_scheduler.CosineAnnealingLR', 'T_max': 1600, 'eta_min': 0.0, 'last_epoch': 0}
+Epochs: 50 | Validate every: 2
+Evaluation: tile=128 | stride=85 | tile_batch=8
+Checkpoint selection: validation miou
+Sanity checks: {'optimizer_matches_trainable_parameters': True, 'has_trainable_parameters': True, 'requested_frozen_encoder_is_frozen': True}
+Output: runs\sen1floods11\terramind\linear_segmentation\s2_50e\20261110_190730_5249fb91

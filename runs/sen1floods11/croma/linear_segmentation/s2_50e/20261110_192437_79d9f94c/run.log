@@ -1,0 +1,226 @@
+Configuration: configs\croma\linear_segmentation\croma_s2_linear_segmentation_50e_all_hand_labels.yaml | Run: runs\sen1floods11\croma\linear_segmentation\s2_50e\20261110_192437_79d9f94c
+experiment:
+  name: croma_s2_linear_segmentation_50e_all_hand_labels
+  seed: 234
+dataset:
+  name: sen1floods11
+  modalities:
+  - optical
+  train_csv: data/sen1floods11/splits/all_hand_labels/flood_train_data.csv
+  val_csv: data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv
+  test_csv: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv
+  bolivia_csv: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv
+model:
+  name: croma
+  size: large
+  checkpoint: pretrained_models/CROMA_large.pt
+  modality: optical
+  image_resolution: 120
+  freeze_encoder: true
+adapter:
+  name: token_to_spatial
+  feature_key: tokens
+  grid_size: null
+head:
+  name: linear_segmentation
+  in_channels: 1024
+  num_classes: 2
+preprocessing:
+  normalization:
+    method: two_sigma_stretch
+    statistics: training_dataset
+    use_8_bit: false
+  band_indices:
+    optical:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 11
+    - 12
+  crop_size: 120
+training:
+  epochs: 50
+  batch_size: 8
+  num_workers: 0
+  validate_every: 2
+  loss:
+    name: cross_entropy
+    ignore_index: 255
+    class_weights: null
+  optimizer:
+    name: adamw
+    learning_rate: 0.003
+    weight_decay: 0.01
+  scheduler:
+    name: cosine_annealing
+    eta_min: 0.0
+evaluation:
+  aw_pw_fw: true
+  batch_size: 1
+  tile_size: 120
+  stride: 80
+  tile_batch_size: 8
+  class_names:
+  - non_water
+  - water
+  return_per_sample: true
+  sample_id_key: chip_id
+  checkpoint_metric: miou
+output:
+  directory: runs/sen1floods11/croma/linear_segmentation/s2_50e
+Configuration checks passed.
+[Build] preprocessing
+Loading cached statistics for optical: data\statistics\sen1floods11\57be4dc440bf\optical_b2316b09fcd43301.json
+[Build] datasets and DataLoaders
+[Build] encoder, adapter and head
+Initializing optical encoder
+[Build] loss
+[Build] optimizer
+[Build] scheduler
+
+Experiment setup (verified runtime objects)
+Experiment: croma_s2_linear_segmentation_50e_all_hand_labels
+Model: croma | Encoder: CROMAEncoder
+Native input: optical
+Input mapping: None
+Pretrained checkpoint: pretrained_models/CROMA_large.pt
+Head: LinearSegmentationHead | Adapter: TokenToSpatial
+Head structure: LinearSegmentationHead(
+  (classifier): Conv2d(1024, 2, kernel_size=(1, 1), stride=(1, 1))
+)
+Encoder parameters: 311,420,928 total, 0 trainable
+Head parameters: 2,050 trainable
+Device: cuda | GPU: NVIDIA GeForce RTX 3070
+Seed: 234 | Streams: {'model': 234, 'shuffle': 235, 'crops': 236, 'train_loader': 237, 'val_loader': 238, 'test_loader': 239, 'bolivia_loader': 240}
+Normalization: two_sigma_stretch | Bands: {'optical': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12]}
+Data [train]: data/sen1floods11/splits/all_hand_labels/flood_train_data.csv | 252 samples | inputs=['optical'] | batch=8 | workers=0 | crop=120
+Data [val]: data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv | 89 samples | inputs=['optical'] | batch=1 | workers=0 | crop=None
+Data [test]: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv | 90 samples | inputs=['optical'] | batch=1 | workers=0 | crop=None
+Data [bolivia]: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv | 15 samples | inputs=['optical'] | batch=1 | workers=0 | crop=None
+Loss: CrossEntropyLoss | reduction=mean | weights=None | ignore_index=255
+Optimizer [0]: AdamW | LR=0.003 | weight_decay=0.01 | betas=(0.9, 0.999)
+Scheduler: {'class': 'torch.optim.lr_scheduler.CosineAnnealingLR', 'T_max': 1600, 'eta_min': 0.0, 'last_epoch': 0}
+Epochs: 50 | Validate every: 2
+Evaluation: tile=120 | stride=80 | tile_batch=8
+Checkpoint selection: validation miou
+Sanity checks: {'optimizer_matches_trainable_parameters': True, 'has_trainable_parameters': True, 'requested_frozen_encoder_is_frozen': True}
+Output: runs\sen1floods11\croma\linear_segmentation\s2_50e\20261110_192437_79d9f94c
+
+Device: cuda | Run: runs\sen1floods11\croma\linear_segmentation\s2_50e\20261110_192437_79d9f94c | Validate every 2 epochs
+
+First valid training batch:
+{
+  "inputs": {
+    "optical": {
+      "shape": [
+        8,
+        12,
+        120,
+        120
+      ],
+      "dtype": "torch.float32",
+      "device": "cuda:0",
+      "all_finite": true,
+      "min": 0.0,
+      "max": 1.0
+    }
+  },
+  "target": {
+    "shape": [
+      8,
+      120,
+      120
+    ],
+    "dtype": "torch.int64",
+    "valid_pixels": 96130,
+    "ignored_pixels": 19070,
+    "valid_label_counts": {
+      "0": 94732,
+      "1": 1398
+    }
+  },
+  "logits": {
+    "shape": [
+      8,
+      2,
+      120,
+      120
+    ],
+    "dtype": "torch.float32",
+    "device": "cuda:0",
+    "all_finite": true,
+    "min": -1.8809117078781128,
+    "max": 1.326687216758728
+  },
+  "sanity_checks": {
+    "finite_inputs": true,
+    "finite_logits": true,
+    "output_matches_target": true,
+    "valid_label_range": true
+  }
+}
+Epoch 001/50 | LR 3.00e-03 | Train loss 0.2768
+Epoch 002/50 | LR 3.00e-03 | Train loss 0.1085 | Val loss 0.1055 | mIoU 0.8145 | non_water IoU 0.9584 | water IoU 0.6706
+Epoch 003/50 | LR 2.99e-03 | Train loss 0.0922
+Epoch 004/50 | LR 2.97e-03 | Train loss 0.0964 | Val loss 0.0796 | mIoU 0.8542 | non_water IoU 0.9641 | water IoU 0.7443
+Epoch 005/50 | LR 2.95e-03 | Train loss 0.0782
+Epoch 006/50 | LR 2.93e-03 | Train loss 0.0930 | Val loss 0.0900 | mIoU 0.8266 | non_water IoU 0.9616 | water IoU 0.6916
+Epoch 007/50 | LR 2.89e-03 | Train loss 0.0956
+Epoch 008/50 | LR 2.86e-03 | Train loss 0.0777 | Val loss 0.0809 | mIoU 0.8440 | non_water IoU 0.9638 | water IoU 0.7242
+Epoch 009/50 | LR 2.81e-03 | Train loss 0.0711
+Epoch 010/50 | LR 2.77e-03 | Train loss 0.0730 | Val loss 0.0906 | mIoU 0.8246 | non_water IoU 0.9610 | water IoU 0.6882
+Epoch 011/50 | LR 2.71e-03 | Train loss 0.0796
+Epoch 012/50 | LR 2.66e-03 | Train loss 0.0738 | Val loss 0.0829 | mIoU 0.8479 | non_water IoU 0.9609 | water IoU 0.7349
+Epoch 013/50 | LR 2.59e-03 | Train loss 0.0812
+Epoch 014/50 | LR 2.53e-03 | Train loss 0.0982 | Val loss 0.0841 | mIoU 0.8464 | non_water IoU 0.9638 | water IoU 0.7290
+Epoch 015/50 | LR 2.46e-03 | Train loss 0.0847
+Epoch 016/50 | LR 2.38e-03 | Train loss 0.0702 | Val loss 0.0762 | mIoU 0.8561 | non_water IoU 0.9665 | water IoU 0.7456
+Epoch 017/50 | LR 2.30e-03 | Train loss 0.0652
+Epoch 018/50 | LR 2.22e-03 | Train loss 0.0958 | Val loss 0.0777 | mIoU 0.8590 | non_water IoU 0.9654 | water IoU 0.7526
+Epoch 019/50 | LR 2.14e-03 | Train loss 0.0713
+Epoch 020/50 | LR 2.05e-03 | Train loss 0.0725 | Val loss 0.0772 | mIoU 0.8512 | non_water IoU 0.9663 | water IoU 0.7362
+Epoch 021/50 | LR 1.96e-03 | Train loss 0.0729
+Epoch 022/50 | LR 1.87e-03 | Train loss 0.0743 | Val loss 0.0725 | mIoU 0.8624 | non_water IoU 0.9683 | water IoU 0.7565
+Epoch 023/50 | LR 1.78e-03 | Train loss 0.0672
+Epoch 024/50 | LR 1.69e-03 | Train loss 0.0633 | Val loss 0.0686 | mIoU 0.8679 | non_water IoU 0.9692 | water IoU 0.7666
+Epoch 025/50 | LR 1.59e-03 | Train loss 0.0590
+Epoch 026/50 | LR 1.50e-03 | Train loss 0.0697 | Val loss 0.0676 | mIoU 0.8708 | non_water IoU 0.9697 | water IoU 0.7719
+Epoch 027/50 | LR 1.41e-03 | Train loss 0.0634
+Epoch 028/50 | LR 1.31e-03 | Train loss 0.0584 | Val loss 0.0681 | mIoU 0.8698 | non_water IoU 0.9697 | water IoU 0.7700
+Epoch 029/50 | LR 1.22e-03 | Train loss 0.0657
+Epoch 030/50 | LR 1.13e-03 | Train loss 0.0659 | Val loss 0.0682 | mIoU 0.8697 | non_water IoU 0.9693 | water IoU 0.7701
+Epoch 031/50 | LR 1.04e-03 | Train loss 0.0640
+Epoch 032/50 | LR 9.48e-04 | Train loss 0.0613 | Val loss 0.0692 | mIoU 0.8639 | non_water IoU 0.9686 | water IoU 0.7592
+Epoch 033/50 | LR 8.61e-04 | Train loss 0.0657
+Epoch 034/50 | LR 7.77e-04 | Train loss 0.0684 | Val loss 0.0671 | mIoU 0.8717 | non_water IoU 0.9696 | water IoU 0.7737
+Epoch 035/50 | LR 6.96e-04 | Train loss 0.0638
+Epoch 036/50 | LR 6.18e-04 | Train loss 0.0638 | Val loss 0.0677 | mIoU 0.8693 | non_water IoU 0.9694 | water IoU 0.7692
+Epoch 037/50 | LR 5.44e-04 | Train loss 0.0685
+Epoch 038/50 | LR 4.73e-04 | Train loss 0.0636 | Val loss 0.0683 | mIoU 0.8691 | non_water IoU 0.9690 | water IoU 0.7691
+Epoch 039/50 | LR 4.07e-04 | Train loss 0.0637
+Epoch 040/50 | LR 3.44e-04 | Train loss 0.0646 | Val loss 0.0681 | mIoU 0.8676 | non_water IoU 0.9693 | water IoU 0.7658
+Epoch 041/50 | LR 2.86e-04 | Train loss 0.0575
+Epoch 042/50 | LR 2.34e-04 | Train loss 0.0663 | Val loss 0.0678 | mIoU 0.8722 | non_water IoU 0.9696 | water IoU 0.7749
+Epoch 043/50 | LR 1.86e-04 | Train loss 0.0653
+Epoch 044/50 | LR 1.43e-04 | Train loss 0.0713 | Val loss 0.0675 | mIoU 0.8711 | non_water IoU 0.9696 | water IoU 0.7726
+Epoch 045/50 | LR 1.05e-04 | Train loss 0.0611
+Epoch 046/50 | LR 7.34e-05 | Train loss 0.0611 | Val loss 0.0678 | mIoU 0.8676 | non_water IoU 0.9693 | water IoU 0.7659
+Epoch 047/50 | LR 4.71e-05 | Train loss 0.0673
+Epoch 048/50 | LR 2.66e-05 | Train loss 0.0583 | Val loss 0.0677 | mIoU 0.8683 | non_water IoU 0.9693 | water IoU 0.7672
+Epoch 049/50 | LR 1.18e-05 | Train loss 0.0661
+Epoch 050/50 | LR 2.96e-06 | Train loss 0.0600 | Val loss 0.0677 | mIoU 0.8685 | non_water IoU 0.9693 | water IoU 0.7677
+test: mIoU 0.8674 | non_water IoU 0.9649 | water IoU 0.7699
+  AW: mean per-chip IoU=0.5202154254072489, pooled IoU=0.7699104659465992
+  PW: mean per-chip IoU=0.5395934359052247, pooled IoU=0.8542702612618548
+  FW: mean per-chip IoU=0.4488594626768394, pooled IoU=0.6705478545636342
+bolivia: mIoU 0.7840 | non_water IoU 0.9289 | water IoU 0.6391
+  AW: mean per-chip IoU=0.4469614119111346, pooled IoU=0.6391303481397341
+  PW: mean per-chip IoU=0.40382593873425204, pooled IoU=0.44014721730820067
+  FW: mean per-chip IoU=0.3737682523872312, pooled IoU=0.6338249349911732
