@@ -20,6 +20,7 @@ from src.evaluation.evaluator import evaluate, save_evaluation_report
 from training.trainer import train_one_epoch
 from training.checkpoints import save_checkpoint, load_checkpoint
 from utils import (
+    capture_run_output, report_runtime_setup, report_first_training_batch,
     load_config, build_dataset, build_preprocessing, build_loaders, experiment_random_seeds,
     build_loss, build_optimizer, build_scheduler, file_sha256, write_json, build_run_summary, save_training_plots, save_test_plots, format_iou_metrics,
 )
@@ -32,7 +33,25 @@ def run_experiment(config_path=CONFIG_PATH, device=None):
     """Train a fresh model, evaluate its best checkpoint, and return its run folder."""
     
     # Validate the YAML before loading data or allocating model memory.
-    config = load_config(config_path)
+    try:
+        config = load_config(config_path, show_config=False)
+    except (ValueError, FileNotFoundError) as exc:
+        print(f"Configuration rejected: {exc}", flush=True)
+        raise
+    # Create the run before setup so builder failures have a persistent log.
+    run_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:8]
+    run_dir = Path(config["output"]["directory"]) / run_id
+    run_dir.mkdir(parents=True, exist_ok=False)
+    (run_dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    with capture_run_output(run_dir / "run.log"):
+        print(f"Configuration: {config_path} | Run: {run_dir}", flush=True)
+        print(yaml.safe_dump(config, sort_keys=False).rstrip(), flush=True)
+        print("Configuration checks passed.", flush=True)
+        return _run_experiment(config, run_dir, device)
+
+
+def _run_experiment(config, run_dir, device):
+    """Execute an already validated experiment inside its logging context."""
     seed = config["experiment"].get("seed", 42)
     random_seeds = experiment_random_seeds(seed)
     
@@ -47,21 +66,22 @@ def run_experiment(config_path=CONFIG_PATH, device=None):
         raise FileNotFoundError(config["model"]["checkpoint"])
     
     # Build the data pipeline and trainable components from the same configuration.
+    print("[Build] preprocessing", flush=True)
     normalizer, _ = build_preprocessing(config)
+    print("[Build] datasets and DataLoaders", flush=True)
     loaders = build_loaders(config, normalizer)
+    print("[Build] encoder, adapter and head", flush=True)
     model = build_model(config).to(device)
+    print("[Build] loss", flush=True)
     criterion = build_loss(config["training"]["loss"], device)
+    print("[Build] optimizer", flush=True)
     optimizer = build_optimizer(config["training"]["optimizer"], model)
+    print("[Build] scheduler", flush=True)
     scheduler = build_scheduler(config["training"].get("scheduler"), optimizer,
                                 len(loaders["train"]), epochs=config["training"]["epochs"])
 
-    # Give each invocation its own directory to preserve previous experiments.
-    run_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:8]
-    run_dir = Path(config["output"]["directory"]) / run_id
-    run_dir.mkdir(parents=True, exist_ok=False)
-    
-    # Save the exact settings and normalization values needed for later evaluation.
-    (run_dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    report_runtime_setup(run_dir, config, normalizer, loaders, model, criterion, optimizer, scheduler, device)
+
     write_json(run_dir / "normalization.json", dict(
         statistics=normalizer.statistics, method=normalizer.method,
         band_indices=normalizer.band_indices, use_8_bit=normalizer.use_8_bit,
@@ -105,12 +125,16 @@ def run_experiment(config_path=CONFIG_PATH, device=None):
     
     print(f"Device: {device} | Run: {run_dir} | Validate every {every} epochs", flush=True)
     
+    def observe_first_batch(images, target, logits):
+        report_first_training_batch(run_dir, images, target, logits, criterion.ignore_index)
+
     for epoch in range(1, epochs + 1):
         
         # The trainer performs optimizer updates and steps the per-update scheduler.
         lr_start = optimizer.param_groups[0]["lr"]
         loss = train_one_epoch(model, loaders["train"], optimizer, criterion, device,
-                               scheduler=scheduler, input_keys=config["dataset"]["modalities"])
+                               scheduler=scheduler, input_keys=config["dataset"]["modalities"],
+                               batch_observer=observe_first_batch if epoch == 1 else None)
         
         row = {"epoch": epoch, "train_loss": loss, "lr_start": lr_start,
                "lr_end": optimizer.param_groups[0]["lr"]}

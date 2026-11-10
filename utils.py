@@ -13,6 +13,7 @@ from src.data.datasets.sen1floods11 import Sen1Floods11Dataset
 from src.data.preprocessing import NormalizeFromStats
 from src.data.statistics import get_or_compute_stats
 from src.data.transforms import random_crop
+from src.models.factory import resolve_croma_modality
 
 # Convert the training.loss settings into a criterion on the selected device.
 def build_loss(config, device):
@@ -32,7 +33,7 @@ def build_loss(config, device):
 
 
 # Read YAML and reject configurations incompatible with the current pipeline.
-def load_config(path):
+def load_config(path, *, show_config=False):
     
     path = Path(path)
     
@@ -44,6 +45,11 @@ def load_config(path):
     except yaml.YAMLError as exc:
         raise ValueError(f"Invalid YAML in {path}: {exc}") from exc
     
+    # Print the supplied settings even if a later validation check rejects them.
+    if show_config:
+        print(f"\nConfiguration: {path}", flush=True)
+        print(yaml.safe_dump(config, sort_keys=False).rstrip(), flush=True)
+
     for section in ("experiment", "dataset", "model", "adapter", "head",
                     "preprocessing", "training", "evaluation", "output"):
         if not isinstance(config, dict) or not isinstance(config.get(section), dict):
@@ -92,7 +98,7 @@ def load_config(path):
             
             value = value[key]
         if value not in available:
-            raise ValueError(f"Unsupported {field}: {value!r}. Available: {', '.join(available)}")
+            raise ValueError(f"{field}: received {value!r}; expected one of {available!r}. Values are case-sensitive.")
         
     scheduler = config["training"].get("scheduler")
     
@@ -119,7 +125,11 @@ def load_config(path):
     
     if not isinstance(modalities, (list, tuple)) or not modalities or any(
             value not in ("sar", "optical") for value in modalities) or len(set(modalities)) != len(modalities):
-        raise ValueError("dataset.modalities must list sar, optical, or both, without duplicates")
+        raise ValueError(
+            f"dataset.modalities: received {modalities!r}; expected ['sar'], ['optical'], "
+            "or ['sar', 'optical'] (either order). Use lowercase dataset keys, without duplicates. "
+            "Use model.modality='sar' for CROMA radar; native spelling is handled internally."
+        )
     
     if config["dataset"]["name"] != "sen1floods11":
         raise ValueError("The current dataset loader supports sen1floods11")
@@ -156,11 +166,8 @@ def load_config(path):
         
         model = config["model"]
         
-        expected = {"SAR": {"sar"}, "optical": {"optical"}, "both": {"sar", "optical"}}
-        
-        if set(config["dataset"]["modalities"]) != expected.get(model.get("modality", "both")):
-            raise ValueError("CROMA model.modality and dataset.modalities disagree")
-        
+        resolve_croma_modality(model.get("modality", "both"), modalities)
+
         if model.get("image_resolution", 120) != config["preprocessing"]["crop_size"] or \
                 evaluation.get("tile_size") != model.get("image_resolution", 120):
             raise ValueError("Match CROMA image_resolution, crop_size and evaluation.tile_size")
@@ -506,3 +513,178 @@ def format_iou_metrics(config, metrics):
     ))
     return " | ".join(f"{name} {value:.4f}" if value is not None
                       else f"{name} undefined" for name, value in pairs)
+
+
+# Mirror Python console output to the run folder, including setup failures.
+class _RunOutput:
+    def __init__(self, terminal, logfile):
+        self.terminal, self.logfile = terminal, logfile
+
+    def write(self, text):
+        self.terminal.write(text)
+        self.logfile.write(text)
+        self.flush()
+        return len(text)
+
+    def flush(self):
+        self.terminal.flush()
+        self.logfile.flush()
+
+    def __getattr__(self, name):
+        return getattr(self.terminal, name)
+
+
+def capture_run_output(path):
+    from contextlib import contextmanager, redirect_stdout, redirect_stderr
+    import sys
+    import traceback
+
+    @contextmanager
+    def capture():
+        with Path(path).open("a", encoding="utf-8", buffering=1) as logfile:
+            with redirect_stdout(_RunOutput(sys.stdout, logfile)), redirect_stderr(_RunOutput(sys.stderr, logfile)):
+                try:
+                    yield
+                except BaseException:
+                    traceback.print_exc()
+                    raise
+    return capture()
+
+
+def report_runtime_setup(run_dir, config, normalizer, loaders, model, criterion, optimizer, scheduler, device):
+    """Inspect constructed objects without sampling data or running inference."""
+    import platform
+
+    def kind(obj):
+        return f"{type(obj).__module__}.{type(obj).__name__}"
+
+    def parameters(module):
+        return {"class": kind(module), "parameters": sum(p.numel() for p in module.parameters()),
+                "trainable_parameters": sum(p.numel() for p in module.parameters() if p.requires_grad)}
+
+    trainable = {id(p) for p in model.parameters() if p.requires_grad}
+    optimized = [id(p) for group in optimizer.param_groups for p in group["params"]]
+    checks = {
+        "optimizer_matches_trainable_parameters": set(optimized) == trainable and len(optimized) == len(trainable),
+        "has_trainable_parameters": bool(trainable),
+        "requested_frozen_encoder_is_frozen": (not config["model"].get("freeze_encoder", True)
+                                               or not any(p.requires_grad for p in model.encoder.parameters())),
+    }
+    report = {
+        "experiment": config["experiment"],
+        "paths": {"pretrained_checkpoint": config["model"]["checkpoint"],
+                  "splits": {split: config["dataset"][f"{split}_csv"] for split in loaders},
+                  "run_directory": str(run_dir)},
+        "training_settings": {"epochs": config["training"]["epochs"],
+                              "validate_every": config["training"].get("validate_every", 5)},
+        "environment": {"python": platform.python_version(), "torch": str(torch.__version__),
+                        "cuda_runtime": torch.version.cuda, "device": str(device),
+                        "gpu": torch.cuda.get_device_name(device) if device.type == "cuda" else None},
+        "data": {split: {"dataset_class": kind(loader.dataset), "samples": len(loader.dataset),
+                         "batches": len(loader), "batch_size": loader.batch_size,
+                         "num_workers": loader.num_workers, "drop_last": loader.drop_last,
+                         "sampler": kind(loader.sampler),
+                         "modalities": list(loader.dataset.modalities),
+                         "transform": kind(loader.dataset.preprocess_func),
+                         "crop_size": getattr(loader.dataset.preprocess_func, "crop_size", None),
+                         "loader_seed": loader.generator.initial_seed() if loader.generator else None}
+                 for split, loader in loaders.items()},
+        "normalization": {"class": kind(normalizer), "method": normalizer.method,
+                          "band_indices": normalizer.band_indices, "use_8_bit": normalizer.use_8_bit,
+                          "statistics": normalizer.statistics},
+        "model": {"class": kind(model), "encoder": parameters(model.encoder),
+                  "backbone_class": kind(model.encoder.backbone),
+                  "adapter": {**parameters(model.adapter), "structure": str(model.adapter)},
+                  "head": {**parameters(model.head), "structure": str(model.head)},
+                  "native_modality": getattr(model.encoder, "modality", None),
+                  "native_modalities": getattr(model.encoder, "modalities", None),
+                  "input_mapping": getattr(model.encoder, "input_mapping", None),
+                  "merge_method": config["model"].get("merge_method"),
+                  "trainable_parameter_names": [name for name, p in model.named_parameters() if p.requires_grad]},
+        "loss": {"class": kind(criterion), "structure": str(criterion),
+                 "reduction": getattr(criterion, "reduction", None),
+                 "ignore_index": getattr(criterion, "ignore_index", None),
+                 "class_weights": criterion.weight.detach().cpu().tolist() if getattr(criterion, "weight", None) is not None else None},
+        "optimizer": {"class": kind(optimizer),
+                      "groups": [{key: value for key, value in group.items() if key != "params"}
+                                 for group in optimizer.param_groups]},
+        "scheduler": None if scheduler is None else {
+            "class": kind(scheduler),
+            **{key: getattr(scheduler, key) for key in ("T_max", "eta_min", "T_0", "T_mult", "last_epoch") if hasattr(scheduler, key)}},
+        "random_seeds": experiment_random_seeds(config["experiment"].get("seed", 42)),
+        "evaluation_options": config["evaluation"],
+        "sanity_checks": checks,
+    }
+    write_json(Path(run_dir) / "runtime_setup.json", report)
+    lines = [
+        "Experiment setup (verified runtime objects)",
+        f"Experiment: {config['experiment']['name']}",
+        f"Model: {config['model']['name']} | Encoder: {type(model.encoder).__name__}",
+        f"Native input: {report['model']['native_modality'] or report['model']['native_modalities']}",
+        f"Input mapping: {report['model']['input_mapping']}",
+        f"Pretrained checkpoint: {config['model']['checkpoint']}",
+        f"Head: {type(model.head).__name__} | Adapter: {type(model.adapter).__name__}",
+        f"Head structure: {model.head}",
+        f"Encoder parameters: {report['model']['encoder']['parameters']:,} total, "
+        f"{report['model']['encoder']['trainable_parameters']:,} trainable",
+        f"Head parameters: {report['model']['head']['trainable_parameters']:,} trainable",
+        f"Device: {device} | GPU: {report['environment']['gpu']}",
+        f"Seed: {config['experiment'].get('seed', 42)} | Streams: {report['random_seeds']}",
+        f"Normalization: {normalizer.method} | Bands: {normalizer.band_indices}",
+    ]
+    for split, data in report["data"].items():
+        lines.append(
+            f"Data [{split}]: {config['dataset'][f'{split}_csv']} | "
+            f"{data['samples']} samples | inputs={data['modalities']} | "
+            f"batch={data['batch_size']} | workers={data['num_workers']} | crop={data['crop_size']}"
+        )
+    lines.append(f"Loss: {type(criterion).__name__} | reduction={report['loss']['reduction']} | "
+                 f"weights={report['loss']['class_weights']} | ignore_index={report['loss']['ignore_index']}")
+    for index, group in enumerate(optimizer.param_groups):
+        lines.append(f"Optimizer [{index}]: {type(optimizer).__name__} | LR={group['lr']} | "
+                     f"weight_decay={group.get('weight_decay')} | betas={group.get('betas')}")
+    lines.extend([
+        f"Scheduler: {report['scheduler']}",
+        f"Epochs: {config['training']['epochs']} | Validate every: {config['training'].get('validate_every', 5)}",
+        f"Evaluation: tile={config['evaluation'].get('tile_size')} | stride={config['evaluation'].get('stride')} | "
+        f"tile_batch={config['evaluation'].get('tile_batch_size', 1)}",
+        f"Checkpoint selection: validation {config['evaluation'].get('checkpoint_metric', 'miou')}",
+        f"Sanity checks: {checks}",
+        f"Output: {run_dir}",
+    ])
+    readable = "\n".join(lines) + "\n"
+    (Path(run_dir) / "runtime_setup.txt").write_text(readable, encoding="utf-8")
+    print("\n" + readable, flush=True)
+    if not all(checks.values()):
+        raise RuntimeError(f"Runtime sanity checks failed: {checks}")
+
+
+def report_first_training_batch(run_dir, images, target, logits, ignore_index=255):
+    """Observe the first real forward pass; do not consume extra batches/RNG."""
+    def tensor_info(tensor):
+        tensor = tensor.detach()
+        finite = torch.isfinite(tensor)
+        values = tensor[finite]
+        return {"shape": list(tensor.shape), "dtype": str(tensor.dtype), "device": str(tensor.device),
+                "all_finite": bool(finite.all().item()),
+                "min": values.min().item() if values.numel() else None,
+                "max": values.max().item() if values.numel() else None}
+
+    valid = target != ignore_index
+    labels, counts = torch.unique(target[valid], return_counts=True)
+    report = {"inputs": {name: tensor_info(value) for name, value in images.items()},
+              "target": {"shape": list(target.shape), "dtype": str(target.dtype),
+                         "valid_pixels": int(valid.sum().item()), "ignored_pixels": int((~valid).sum().item()),
+                         "valid_label_counts": {str(k): v for k, v in zip(labels.tolist(), counts.tolist())}},
+              "logits": tensor_info(logits)}
+    report["sanity_checks"] = {
+        "finite_inputs": all(value["all_finite"] for value in report["inputs"].values()),
+        "finite_logits": report["logits"]["all_finite"],
+        "output_matches_target": logits.ndim == 4 and target.ndim == 3 and logits.shape[0] == target.shape[0] and logits.shape[-2:] == target.shape[-2:],
+        "valid_label_range": bool(((labels >= 0) & (labels < logits.shape[1])).all().item()) if logits.ndim == 4 else False,
+    }
+    write_json(Path(run_dir) / "first_training_batch.json", report)
+    print("\nFirst valid training batch:", flush=True)
+    print(json.dumps(report, indent=2, allow_nan=False), flush=True)
+    if not all(report["sanity_checks"].values()):
+        raise RuntimeError(f"First-batch sanity checks failed: {report['sanity_checks']}")

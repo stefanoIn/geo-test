@@ -11,6 +11,25 @@ from src.heads.fcn import FCNHead
 from src.heads.linear import LinearSegmentationHead
 
 
+def resolve_croma_modality(value, dataset_modalities=None):
+    """Translate GeoTest modality names to CROMA's native spelling."""
+    inputs = {"sar": {"sar"}, "optical": {"optical"}, "both": {"sar", "optical"}}
+    canonical = value.strip().lower() if isinstance(value, str) else None
+    if canonical not in inputs:
+        raise ValueError(
+            f"model.modality: received {value!r}; expected 'sar', 'optical', or 'both'. "
+            "Capitalization is accepted; spelling must match."
+        )
+    if dataset_modalities is not None and set(dataset_modalities) != inputs[canonical]:
+        required = next((name for name, keys in inputs.items() if keys == set(dataset_modalities)), None)
+        raise ValueError(
+            f"model.modality: received {value!r}; expected {required!r} "
+            f"for dataset.modalities={dataset_modalities!r}. "
+            "Dataset keys must be lowercase 'sar' and/or 'optical'."
+        )
+    return "SAR" if canonical == "sar" else canonical
+
+
 def build_model(config: dict) -> DensePredictionModel:
     """Create encoder, spatial adapter and task head; paths are relative to the working directory.
 
@@ -27,16 +46,9 @@ def build_model(config: dict) -> DensePredictionModel:
     if name == "croma":
         from src.encoders.croma.croma import CROMAEncoder
 
-        modality = mc.get("modality", "both")
-        expected_inputs = {
-            "SAR": {"sar"},
-            "optical": {"optical"},
-            "both": {"sar", "optical"},
-        }
-        if modality not in expected_inputs:
-            raise ValueError(f"Unsupported CROMA modality: {modality!r}")
-        if "dataset" in config and set(config["dataset"]["modalities"]) != expected_inputs[modality]:
-            raise ValueError("CROMA model modality and dataset modalities disagree")
+        modality = resolve_croma_modality(
+            mc.get("modality", "both"), config.get("dataset", {}).get("modalities")
+        )
         encoder = CROMAEncoder(
             checkpoint_path=path,
             size=mc.get("size", "large"),

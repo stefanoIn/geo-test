@@ -1,0 +1,50 @@
+{
+  "inputs": {
+    "sar": {
+      "shape": [
+        8,
+        2,
+        120,
+        120
+      ],
+      "dtype": "torch.float32",
+      "device": "cuda:0",
+      "all_finite": true,
+      "min": 0.0,
+      "max": 1.0
+    }
+  },
+  "target": {
+    "shape": [
+      8,
+      120,
+      120
+    ],
+    "dtype": "torch.int64",
+    "valid_pixels": 96130,
+    "ignored_pixels": 19070,
+    "valid_label_counts": {
+      "0": 94732,
+      "1": 1398
+    }
+  },
+  "logits": {
+    "shape": [
+      8,
+      2,
+      120,
+      120
+    ],
+    "dtype": "torch.float32",
+    "device": "cuda:0",
+    "all_finite": true,
+    "min": -1.5358481407165527,
+    "max": 1.5232149362564087
+  },
+  "sanity_checks": {
+    "finite_inputs": true,
+    "finite_logits": true,
+    "output_matches_target": true,
+    "valid_label_range": true
+  }
+}

@@ -10,7 +10,7 @@ import torch
 from torch import nn
 
 
-def train_one_epoch(model, train_loader, optimizer, criterion, device, scheduler=None, input_keys=None):
+def train_one_epoch(model, train_loader, optimizer, criterion, device, scheduler=None, input_keys=None, batch_observer=None):
     """Train for one epoch; return the mean loss over valid target pixels.
 
     ``scheduler``, when provided, is stepped after each optimizer update,
@@ -53,6 +53,9 @@ def train_one_epoch(model, train_loader, optimizer, criterion, device, scheduler
 
         optimizer.zero_grad(set_to_none=True)
         logits = model(images)
+        if batch_observer is not None:
+            batch_observer(images, target, logits)
+            batch_observer = None
         loss = criterion(logits, target)
 
         if loss.numel() != 1 or not torch.isfinite(loss).item():
