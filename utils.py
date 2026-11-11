@@ -15,6 +15,19 @@ from src.data.statistics import get_or_compute_stats
 from src.data.transforms import random_crop
 from src.models.factory import resolve_croma_modality
 
+
+BASELINE_MODELS = frozenset({"unet", "resnet_unet"})
+
+
+def is_supervised_baseline(config):
+    """Whether a configuration selects a fully supervised CNN baseline."""
+    return (
+        isinstance(config, dict)
+        and isinstance(config.get("model"), dict)
+        and config["model"].get("name") in BASELINE_MODELS
+    )
+
+
 # Convert the training.loss settings into a criterion on the selected device.
 def build_loss(config, device):
     name = config["name"]
@@ -50,21 +63,52 @@ def load_config(path, *, show_config=False):
         print(f"\nConfiguration: {path}", flush=True)
         print(yaml.safe_dump(config, sort_keys=False).rstrip(), flush=True)
 
-    for section in ("experiment", "dataset", "model", "adapter", "head",
-                    "preprocessing", "training", "evaluation", "output"):
-        if not isinstance(config, dict) or not isinstance(config.get(section), dict):
-            raise ValueError(f"YAML requires a '{section}' mapping")
-    
-    # Check required fields before using them, so errors name the YAML location.
-    required = (
-        "dataset.name", "dataset.modalities", "dataset.train_csv", "dataset.val_csv",
-        "model.name", "model.checkpoint", "adapter.name", "head.name",
-        "head.in_channels", "head.num_classes", "preprocessing.crop_size",
-        "preprocessing.normalization.method", "preprocessing.normalization.statistics",
-        "training.epochs", "training.batch_size", "training.loss.name",
-        "training.optimizer.name", "training.optimizer.learning_rate", "output.directory",
+   
+    if not isinstance(config, dict):
+        raise ValueError("YAML root must be a mapping")
+
+    baseline = is_supervised_baseline(config)
+
+    sections = (
+        "experiment", "dataset", "model", "head",
+        "preprocessing", "training", "evaluation", "output",
     )
-    
+
+    if not baseline:
+        sections += ("adapter",)
+
+    for section in sections:
+        if not isinstance(config.get(section), dict):
+            raise ValueError(f"YAML requires a '{section}' mapping")
+
+    required = (
+        "dataset.name",
+        "dataset.modalities",
+        "dataset.train_csv",
+        "dataset.val_csv",
+        "model.name",
+        "head.num_classes",
+        "preprocessing.crop_size",
+        "preprocessing.normalization.method",
+        "preprocessing.normalization.statistics",
+        "training.epochs",
+        "training.batch_size",
+        "training.loss.name",
+        "training.optimizer.name",
+        "training.optimizer.learning_rate",
+        "output.directory",
+    )
+
+    if baseline:
+        required += ("model.in_channels",)
+    else:
+        required += (
+            "model.checkpoint",
+            "adapter.name",
+            "head.name",
+            "head.in_channels",
+        )
+
     for field in required:
         value = config 
         
@@ -79,16 +123,29 @@ def load_config(path, *, show_config=False):
             raise ValueError(f"YAML field cannot be null: {field}")
 
     # MODIFY THIS WHEN ADDING NEW COMPONENTS
+    ###############################################
     choices = {
         "dataset.name": ("sen1floods11",),
-        "model.name": ("croma", "terramind_v1_base", "terramind_v1_large"),
-        "adapter.name": ("token_to_spatial",),
-        "head.name": ("fcn", "linear_segmentation"),
+        "model.name": (
+            "croma",
+            "terramind_v1_base",
+            "terramind_v1_large",
+            "unet",
+            "resnet_unet",
+        ),
         "training.loss.name": ("cross_entropy",),
         "training.optimizer.name": ("adamw", "adam", "sgd"),
-        "preprocessing.normalization.method": ("zscore", "two_sigma_stretch"),
-        "preprocessing.normalization.statistics": ("training_dataset", "pretraining_fixed"),
+        "preprocessing.normalization.method": (
+            "zscore", "two_sigma_stretch",
+        ),
+        "preprocessing.normalization.statistics": (
+            "training_dataset", "pretraining_fixed",
+        ),
     }
+
+    if not baseline:
+        choices["adapter.name"] = ("token_to_spatial",)
+        choices["head.name"] = ("fcn", "linear_segmentation")
     ####################################################
      
     for field, available in choices.items():
@@ -134,6 +191,62 @@ def load_config(path, *, show_config=False):
     if config["dataset"]["name"] != "sen1floods11":
         raise ValueError("The current dataset loader supports sen1floods11")
     
+    # CNN baselines are fully specified supervised models: no pretrained
+    # checkpoint, separate adapter, or pretrained feature head is required.
+    if baseline:
+        mc = config["model"]
+        hc = config["head"]
+        if "checkpoint" in mc or "freeze_encoder" in mc:
+            raise ValueError(
+                "Scratch baselines cannot define model.checkpoint or model.freeze_encoder"
+            )
+        if "adapter" in config:
+            raise ValueError("Scratch baselines do not use an adapter section")
+        if "name" in hc or "in_channels" in hc:
+            raise ValueError(
+                "For baselines, head contains task metadata (num_classes), "
+                "not a separately constructed prediction head"
+            )
+        if (type(hc["num_classes"]) is not int or hc["num_classes"] < 2):
+            raise ValueError("head.num_classes must be an integer >= 2")
+        if config["preprocessing"]["normalization"]["statistics"] != "training_dataset":
+            raise ValueError("Scratch baselines require training_dataset statistics")
+
+        if mc["name"] == "resnet_unet":
+            supported = {"resnet18", "resnet34", "resnet50", "resnet101", "resnet152"}
+            if mc.get("encoder_name", "resnet50") not in supported:
+                raise ValueError(
+                    f"Unsupported ResNet encoder: {mc.get('encoder_name')!r}"
+                )
+
+        # Channel accounting is specific to the Sen1Floods11 loader.
+        raw_channels = {"sar": 2, "optical": 13}
+        indices_by_modality = config["preprocessing"].get("band_indices") or {}
+        if not isinstance(indices_by_modality, dict):
+            raise ValueError("preprocessing.band_indices must be a mapping")
+        if set(indices_by_modality) - set(modalities):
+            raise ValueError("band_indices specifies a modality not selected by dataset")
+
+        expected_channels = 0
+        for modality in modalities:
+            selected = indices_by_modality.get(modality)
+            if selected is None:
+                expected_channels += raw_channels[modality]
+                continue
+            if (not isinstance(selected, list) or not selected
+                    or any(type(i) is not int or not 0 <= i < raw_channels[modality]
+                           for i in selected)
+                    or len(set(selected)) != len(selected)):
+                raise ValueError(f"Invalid band indices for {modality}")
+            expected_channels += len(selected)
+
+        if (type(mc["in_channels"]) is not int
+                or mc["in_channels"] != expected_channels):
+            raise ValueError(
+                f"model.in_channels={mc['in_channels']!r}, "
+                f"but preprocessing produces {expected_channels} channels"
+            )
+
     loss = config["training"]["loss"]
     
     if loss["name"] != "cross_entropy":
@@ -174,11 +287,13 @@ def load_config(path, *, show_config=False):
                 evaluation.get("tile_size") != model.get("image_resolution", 120):
             raise ValueError("Match CROMA image_resolution, crop_size and evaluation.tile_size")
         
-    # Check every configured split and referenced raster before statistics or GPU work.
-    checkpoint = Path(config["model"]["checkpoint"])
-    
-    if not checkpoint.is_file():
-        raise FileNotFoundError(f"Pretrained checkpoint not found (model.checkpoint): {checkpoint}")
+    # Scratch CNNs have no external weights; pretrained models do.
+    if not baseline:
+        checkpoint = Path(config["model"]["checkpoint"])
+        if not checkpoint.is_file():
+            raise FileNotFoundError(
+                f"Pretrained checkpoint not found (model.checkpoint): {checkpoint}"
+            )
     
     water_categories = config["evaluation"].get("aw_pw_fw", False)
     
@@ -554,103 +669,209 @@ def capture_run_output(path):
 
 
 def report_runtime_setup(run_dir, config, normalizer, loaders, model, criterion, optimizer, scheduler, device):
-    """Inspect constructed objects without sampling data or running inference."""
+    """Report one common runtime contract for both GeoFMs and CNN baselines.
+
+    Architecture-specific submodules are optional in this report; the common
+    trainable-parameter, optimizer and data checks are never optional.
+    """
     import platform
 
     def kind(obj):
-        return f"{type(obj).__module__}.{type(obj).__name__}"
+        return None if obj is None else f"{type(obj).__module__}.{type(obj).__name__}"
 
     def parameters(module):
-        return {"class": kind(module), "parameters": sum(p.numel() for p in module.parameters()),
-                "trainable_parameters": sum(p.numel() for p in module.parameters() if p.requires_grad)}
+        if module is None:
+            return None
+        return {
+            "class": kind(module),
+            "parameters": sum(p.numel() for p in module.parameters()),
+            "trainable_parameters": sum(
+                p.numel() for p in module.parameters() if p.requires_grad
+            ),
+        }
+
+    baseline = is_supervised_baseline(config)
+    encoder = getattr(model, "encoder", None)
+    adapter = getattr(model, "adapter", None)
+    head = getattr(model, "head", None)
+    network = getattr(model, "network", None)  # SMP ResNetUNet wrapper
+    backbone = (getattr(encoder, "backbone", None) if encoder is not None
+                else getattr(network, "encoder", None))
 
     trainable = {id(p) for p in model.parameters() if p.requires_grad}
     optimized = [id(p) for group in optimizer.param_groups for p in group["params"]]
     checks = {
-        "optimizer_matches_trainable_parameters": set(optimized) == trainable and len(optimized) == len(trainable),
+        "optimizer_matches_trainable_parameters": (
+            set(optimized) == trainable and len(optimized) == len(trainable)
+        ),
         "has_trainable_parameters": bool(trainable),
-        "requested_frozen_encoder_is_frozen": (not config["model"].get("freeze_encoder", True)
-                                               or not any(p.requires_grad for p in model.encoder.parameters())),
+    }
+    if baseline:
+        checks["baseline_all_parameters_trainable"] = all(
+            p.requires_grad for p in model.parameters()
+        )
+    else:
+        checks["requested_frozen_encoder_is_frozen"] = (
+            not config["model"].get("freeze_encoder", True)
+            or (encoder is not None and not any(
+                p.requires_grad for p in encoder.parameters()
+            ))
+        )
+
+    submodules = {
+        name: parameters(module) for name, module in model.named_children()
     }
     report = {
         "experiment": config["experiment"],
-        "paths": {"pretrained_checkpoint": config["model"]["checkpoint"],
-                  "splits": {split: config["dataset"][f"{split}_csv"] for split in loaders},
-                  "run_directory": str(run_dir)},
-        "training_settings": {"epochs": config["training"]["epochs"],
-                              "validate_every": config["training"].get("validate_every", 5)},
-        "environment": {"python": platform.python_version(), "torch": str(torch.__version__),
-                        "cuda_runtime": torch.version.cuda, "device": str(device),
-                        "gpu": torch.cuda.get_device_name(device) if device.type == "cuda" else None},
-        "data": {split: {"dataset_class": kind(loader.dataset), "samples": len(loader.dataset),
-                         "batches": len(loader), "batch_size": loader.batch_size,
-                         "num_workers": loader.num_workers, "drop_last": loader.drop_last,
-                         "sampler": kind(loader.sampler),
-                         "modalities": list(loader.dataset.modalities),
-                         "transform": kind(loader.dataset.preprocess_func),
-                         "crop_size": getattr(loader.dataset.preprocess_func, "crop_size", None),
-                         "loader_seed": loader.generator.initial_seed() if loader.generator else None}
-                 for split, loader in loaders.items()},
-        "normalization": {"class": kind(normalizer), "method": normalizer.method,
-                          "band_indices": normalizer.band_indices, "use_8_bit": normalizer.use_8_bit,
-                          "statistics": normalizer.statistics},
-        "model": {"class": kind(model), "encoder": parameters(model.encoder),
-                  "backbone_class": kind(model.encoder.backbone),
-                  "adapter": {**parameters(model.adapter), "structure": str(model.adapter)},
-                  "head": {**parameters(model.head), "structure": str(model.head)},
-                  "native_modality": getattr(model.encoder, "modality", None),
-                  "native_modalities": getattr(model.encoder, "modalities", None),
-                  "input_mapping": getattr(model.encoder, "input_mapping", None),
-                  "merge_method": config["model"].get("merge_method"),
-                  "trainable_parameter_names": [name for name, p in model.named_parameters() if p.requires_grad]},
-        "loss": {"class": kind(criterion), "structure": str(criterion),
-                 "reduction": getattr(criterion, "reduction", None),
-                 "ignore_index": getattr(criterion, "ignore_index", None),
-                 "class_weights": criterion.weight.detach().cpu().tolist() if getattr(criterion, "weight", None) is not None else None},
-        "optimizer": {"class": kind(optimizer),
-                      "groups": [{key: value for key, value in group.items() if key != "params"}
-                                 for group in optimizer.param_groups]},
+        "paths": {
+            "pretrained_checkpoint": config["model"].get("checkpoint"),
+            "splits": {
+                split: config["dataset"][f"{split}_csv"] for split in loaders
+            },
+            "run_directory": str(run_dir),
+        },
+        "training_settings": {
+            "epochs": config["training"]["epochs"],
+            "validate_every": config["training"].get("validate_every", 5),
+        },
+        "environment": {
+            "python": platform.python_version(),
+            "torch": str(torch.__version__),
+            "cuda_runtime": torch.version.cuda,
+            "device": str(device),
+            "gpu": torch.cuda.get_device_name(device) if device.type == "cuda" else None,
+        },
+        "data": {
+            split: {
+                "dataset_class": kind(loader.dataset),
+                "samples": len(loader.dataset),
+                "batches": len(loader),
+                "batch_size": loader.batch_size,
+                "num_workers": loader.num_workers,
+                "drop_last": loader.drop_last,
+                "sampler": kind(loader.sampler),
+                "modalities": list(loader.dataset.modalities),
+                "transform": kind(loader.dataset.preprocess_func),
+                "crop_size": getattr(loader.dataset.preprocess_func, "crop_size", None),
+                "loader_seed": loader.generator.initial_seed() if loader.generator else None,
+            }
+            for split, loader in loaders.items()
+        },
+        "normalization": {
+            "class": kind(normalizer),
+            "method": normalizer.method,
+            "band_indices": normalizer.band_indices,
+            "use_8_bit": normalizer.use_8_bit,
+            "statistics": normalizer.statistics,
+        },
+        "model": {
+            **parameters(model),
+            "name": config["model"]["name"],
+            "initialization": "random" if baseline else "pretrained",
+            "encoder": parameters(encoder),
+            "backbone_class": kind(backbone),
+            "adapter": ({**parameters(adapter), "structure": str(adapter)}
+                        if adapter is not None else None),
+            "head": ({**parameters(head), "structure": str(head)}
+                     if head is not None else None),
+            "submodules": submodules,
+            "native_modality": getattr(encoder, "modality", None),
+            "native_modalities": getattr(encoder, "modalities", None),
+            "input_mapping": getattr(encoder, "input_mapping", None),
+            "merge_method": config["model"].get("merge_method"),
+            "input_channels": config["model"].get("in_channels"),
+            "modalities": list(config["dataset"]["modalities"]),
+            "num_classes": config["head"]["num_classes"],
+            "trainable_parameter_names": [
+                name for name, p in model.named_parameters() if p.requires_grad
+            ],
+        },
+        "loss": {
+            "class": kind(criterion),
+            "structure": str(criterion),
+            "reduction": getattr(criterion, "reduction", None),
+            "ignore_index": getattr(criterion, "ignore_index", None),
+            "class_weights": (
+                criterion.weight.detach().cpu().tolist()
+                if getattr(criterion, "weight", None) is not None else None
+            ),
+        },
+        "optimizer": {
+            "class": kind(optimizer),
+            "groups": [
+                {key: value for key, value in group.items() if key != "params"}
+                for group in optimizer.param_groups
+            ],
+        },
         "scheduler": None if scheduler is None else {
             "class": kind(scheduler),
-            **{key: getattr(scheduler, key) for key in ("T_max", "eta_min", "T_0", "T_mult", "last_epoch") if hasattr(scheduler, key)}},
-        "random_seeds": experiment_random_seeds(config["experiment"].get("seed", 42)),
+            **{
+                key: getattr(scheduler, key)
+                for key in ("T_max", "eta_min", "T_0", "T_mult", "last_epoch")
+                if hasattr(scheduler, key)
+            },
+        },
+        "random_seeds": experiment_random_seeds(
+            config["experiment"].get("seed", 42)
+        ),
         "evaluation_options": config["evaluation"],
         "sanity_checks": checks,
     }
     write_json(Path(run_dir) / "runtime_setup.json", report)
+
+    model_report = report["model"]
     lines = [
         "Experiment setup (verified runtime objects)",
         f"Experiment: {config['experiment']['name']}",
-        f"Model: {config['model']['name']} | Encoder: {type(model.encoder).__name__}",
-        f"Native input: {report['model']['native_modality'] or report['model']['native_modalities']}",
-        f"Input mapping: {report['model']['input_mapping']}",
-        f"Pretrained checkpoint: {config['model']['checkpoint']}",
-        f"Head: {type(model.head).__name__} | Adapter: {type(model.adapter).__name__}",
-        f"Head structure: {model.head}",
-        f"Encoder parameters: {report['model']['encoder']['parameters']:,} total, "
-        f"{report['model']['encoder']['trainable_parameters']:,} trainable",
-        f"Head parameters: {report['model']['head']['trainable_parameters']:,} trainable",
+        f"Model: {config['model']['name']} | Class: {type(model).__name__}",
+        f"Initialization: {model_report['initialization']}",
+        f"Model parameters: {model_report['parameters']:,} total, "
+        f"{model_report['trainable_parameters']:,} trainable",
+        f"Pretrained checkpoint: {config['model'].get('checkpoint')}",
+        f"Native input: {model_report['native_modality'] or model_report['native_modalities']}",
+        f"Input mapping: {model_report['input_mapping']}",
+        f"Configured modalities: {config['dataset']['modalities']}",
         f"Device: {device} | GPU: {report['environment']['gpu']}",
         f"Seed: {config['experiment'].get('seed', 42)} | Streams: {report['random_seeds']}",
         f"Normalization: {normalizer.method} | Bands: {normalizer.band_indices}",
     ]
+    for name, component in submodules.items():
+        lines.append(
+            f"Component {name}: {component['class']} | "
+            f"{component['parameters']:,} total, "
+            f"{component['trainable_parameters']:,} trainable"
+        )
+    if head is not None:
+        lines.append(f"Head structure: {head}")
+
     for split, data in report["data"].items():
         lines.append(
             f"Data [{split}]: {config['dataset'][f'{split}_csv']} | "
             f"{data['samples']} samples | inputs={data['modalities']} | "
-            f"batch={data['batch_size']} | workers={data['num_workers']} | crop={data['crop_size']}"
+            f"batch={data['batch_size']} | workers={data['num_workers']} | "
+            f"crop={data['crop_size']}"
         )
-    lines.append(f"Loss: {type(criterion).__name__} | reduction={report['loss']['reduction']} | "
-                 f"weights={report['loss']['class_weights']} | ignore_index={report['loss']['ignore_index']}")
+    lines.append(
+        f"Loss: {type(criterion).__name__} | "
+        f"reduction={report['loss']['reduction']} | "
+        f"weights={report['loss']['class_weights']} | "
+        f"ignore_index={report['loss']['ignore_index']}"
+    )
     for index, group in enumerate(optimizer.param_groups):
-        lines.append(f"Optimizer [{index}]: {type(optimizer).__name__} | LR={group['lr']} | "
-                     f"weight_decay={group.get('weight_decay')} | betas={group.get('betas')}")
+        lines.append(
+            f"Optimizer [{index}]: {type(optimizer).__name__} | "
+            f"LR={group['lr']} | weight_decay={group.get('weight_decay')} | "
+            f"betas={group.get('betas')}"
+        )
     lines.extend([
         f"Scheduler: {report['scheduler']}",
-        f"Epochs: {config['training']['epochs']} | Validate every: {config['training'].get('validate_every', 5)}",
-        f"Evaluation: tile={config['evaluation'].get('tile_size')} | stride={config['evaluation'].get('stride')} | "
+        f"Epochs: {config['training']['epochs']} | "
+        f"Validate every: {config['training'].get('validate_every', 5)}",
+        f"Evaluation: tile={config['evaluation'].get('tile_size')} | "
+        f"stride={config['evaluation'].get('stride')} | "
         f"tile_batch={config['evaluation'].get('tile_batch_size', 1)}",
-        f"Checkpoint selection: validation {config['evaluation'].get('checkpoint_metric', 'miou')}",
+        f"Checkpoint selection: validation "
+        f"{config['evaluation'].get('checkpoint_metric', 'miou')}",
         f"Sanity checks: {checks}",
         f"Output: {run_dir}",
     ])
