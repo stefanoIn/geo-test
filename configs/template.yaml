@@ -84,6 +84,7 @@ evaluation:
   stride:  # TODO: e.g. 60 for overlapping 120-pixel windows
   tile_batch_size: 8  # Windows passed through the model together
   class_names: [non_water, water]
+  save_predictions: false  # Save label/prediction/error PNGs under run/predictions/<split>
   return_per_sample: true
   sample_id_key: chip_id
   aw_pw_fw: false  # true loads JRCWaterHand references and adds AW/PW/FW IoU

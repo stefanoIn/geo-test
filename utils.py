@@ -154,6 +154,8 @@ def load_config(path, *, show_config=False):
         raise ValueError("epochs and validate_every must be positive")
     
     evaluation = config["evaluation"]
+    if not isinstance(evaluation.get("save_predictions", False), bool):
+        raise ValueError("evaluation.save_predictions must be true or false")
     
     if evaluation.get("checkpoint_metric", "miou") not in {"iou", "miou"}:
         raise ValueError("checkpoint_metric must be iou or miou")

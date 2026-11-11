@@ -6,6 +6,7 @@ Supported: Sen1Floods11, CROMA/TerraMind, FCN and mean cross-entropy.
 """
 
 import argparse
+import json
 import random
 from datetime import datetime
 from pathlib import Path
@@ -111,6 +112,9 @@ def _run_experiment(config, run_dir, device):
             sample_id_key=options.get("sample_id_key", "chip_id"),
             class_names=options.get("class_names"),
             aw_pw_fw=options.get("aw_pw_fw", False),
+            prediction_dir=(run_dir / "predictions" / split
+                            if split in {"test", "bolivia"} and options.get("save_predictions", False)
+                            else None),
         )
 
     epochs = config["training"]["epochs"]
@@ -213,6 +217,93 @@ def _run_experiment(config, run_dir, device):
     return run_dir
 
 
+def run_evaluation(run_dir, device=None, splits=None, save_predictions=None):
+    """Evaluate an existing best checkpoint; never train or recompute statistics.
+
+    Results go into a new evaluations/<id> folder inside the original run.
+    Relative dataset/weight paths are resolved from the project working directory.
+    """
+    from torch.utils.data import DataLoader
+    from src.data.preprocessing import NormalizeFromStats
+
+    run_dir = Path(run_dir)
+    checkpoint = run_dir / "checkpoints/best.pt"
+    for path in (run_dir / "config.yaml", run_dir / "normalization.json", checkpoint):
+        if not path.is_file():
+            raise FileNotFoundError(path)
+    config = yaml.safe_load((run_dir / "config.yaml").read_text(encoding="utf-8"))
+    options = config["evaluation"]
+    if save_predictions is not None:
+        options["save_predictions"] = save_predictions
+    if not isinstance(options.get("save_predictions", False), bool):
+        raise ValueError("evaluation.save_predictions must be true or false")
+    splits = list(splits) if splits is not None else [
+        split for split in ("test", "bolivia") if config["dataset"].get(f"{split}_csv")]
+    if not splits or len(set(splits)) != len(splits):
+        raise ValueError("Select at least one distinct evaluation split")
+    for split in splits:
+        if split not in {"val", "test", "bolivia"} or not config["dataset"].get(f"{split}_csv"):
+            raise ValueError(f"Unavailable evaluation split: {split!r}")
+    normalizer = NormalizeFromStats(**json.loads(
+        (run_dir / "normalization.json").read_text(encoding="utf-8")))
+    device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+    output = run_dir / "evaluations" / (datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:8])
+    output.mkdir(parents=True, exist_ok=False)
+    with capture_run_output(output / "evaluation.log"):
+        print(f"Evaluation only | Source: {run_dir} | Output: {output} | Device: {device}", flush=True)
+        print(yaml.safe_dump(config, sort_keys=False).rstrip(), flush=True)
+        (output / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+        write_json(output / "normalization.json", dict(
+            statistics=normalizer.statistics, method=normalizer.method,
+            band_indices=normalizer.band_indices, use_8_bit=normalizer.use_8_bit))
+        # Partial checkpoints require the original pretrained backbone.
+        provenance_path = run_dir / "provenance.json"
+        provenance = json.loads(provenance_path.read_text(encoding="utf-8")) if provenance_path.is_file() else {}
+        pretrained_hash = file_sha256(config["model"]["checkpoint"])
+        if provenance.get("pretrained_sha256") and pretrained_hash != provenance["pretrained_sha256"]:
+            raise ValueError("Pretrained weights differ from the original run")
+        model = build_model(config).to(device)
+        selected = load_checkpoint(checkpoint, model, map_location=device)
+        # Plot-saving flags may change; the trained architecture must not.
+        saved_config = selected.get("config")
+        if saved_config and any(config[key] != saved_config[key] for key in ("model", "adapter", "head")):
+            raise ValueError("Saved run architecture differs from the checkpoint configuration")
+        criterion = build_loss(config["training"]["loss"], device)
+        checkpoint_hash = file_sha256(checkpoint)
+        summary = {"source_run": str(run_dir), "checkpoint": str(checkpoint),
+                   "checkpoint_sha256": checkpoint_hash, "pretrained_sha256": pretrained_hash,
+                   "selected_epoch": selected["epoch"], "evaluations": {}}
+        seeds = experiment_random_seeds(config["experiment"].get("seed", 42))
+        for split in splits:
+            split_hash = file_sha256(config["dataset"][f"{split}_csv"])
+            expected_hash = provenance.get("split_sha256", {}).get(split)
+            if expected_hash and split_hash != expected_hash:
+                raise ValueError(f"{split} split differs from the original run")
+            dataset = build_dataset(config, split, preprocess_func=normalizer)
+            loader = DataLoader(dataset, batch_size=options.get("batch_size", 1),
+                                shuffle=False, num_workers=config["training"].get("num_workers", 0),
+                                generator=torch.Generator().manual_seed(seeds[f"{split}_loader"]))
+            print(f"Evaluating {split}: {len(dataset)} chips | selected epoch {selected['epoch']}", flush=True)
+            results = evaluate(
+                model, loader, device, num_classes=config["head"]["num_classes"],
+                criterion=criterion, ignore_index=criterion.ignore_index,
+                tile_size=options.get("tile_size"), stride=options.get("stride"),
+                tile_batch_size=options.get("tile_batch_size", 1),
+                input_keys=config["dataset"]["modalities"],
+                return_per_sample=options.get("return_per_sample", True),
+                sample_id_key=options.get("sample_id_key", "chip_id"),
+                class_names=options.get("class_names"), aw_pw_fw=options.get("aw_pw_fw", False),
+                prediction_dir=output / "predictions" / split if options.get("save_predictions", False) else None)
+            save_evaluation_report(output / "metrics" / f"{split}.json", results, metadata={
+                "split": split, "split_sha256": split_hash, "checkpoint": str(checkpoint),
+                "checkpoint_sha256": checkpoint_hash, "selected_epoch": selected["epoch"]})
+            save_test_plots(output, config, split, results, selected["epoch"])
+            summary["evaluations"][split] = {k: v for k, v in results.items() if k != "per_sample"}
+            write_json(output / "summary.json", summary)
+            print(f"{split}: {format_iou_metrics(config, results)}", flush=True)
+    return output
+
+
 # Importing this module exposes run_experiment without starting training.
 if __name__ == "__main__":
     # Command-line selection overrides the default without editing this file.
@@ -221,5 +312,18 @@ if __name__ == "__main__":
         "--path", type=Path, default=CONFIG_PATH, metavar="YAML",
         help=f"Experiment YAML path (default: {CONFIG_PATH}). Run from the project folder.",
     )
+    parser.add_argument("--evaluate-only", type=Path, metavar="RUN_DIR",
+                        help="Evaluate an existing run's best checkpoint without training.")
+    parser.add_argument("--splits", nargs="+", choices=["val", "test", "bolivia"],
+                        help="Evaluation-only splits (default: available test and Bolivia).")
+    parser.add_argument("--save-predictions", action="store_true", default=None,
+                        help="Enable per-chip figures in evaluation-only mode; otherwise use saved YAML.")
     args = parser.parse_args()
-    run_experiment(args.path)
+    if args.evaluate_only is not None:
+        if args.path != CONFIG_PATH:
+            parser.error("--evaluate-only uses the run's saved config; omit --path")
+        run_evaluation(args.evaluate_only, splits=args.splits, save_predictions=args.save_predictions)
+    else:
+        if args.splits is not None or args.save_predictions is not None:
+            parser.error("--splits and --save-predictions require --evaluate-only")
+        run_experiment(args.path)

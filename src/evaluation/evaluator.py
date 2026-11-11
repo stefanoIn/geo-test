@@ -47,6 +47,7 @@ def evaluate(
     sample_id_key: str | None = None,
     class_names=None,
     aw_pw_fw: bool = False,
+    prediction_dir=None,
 ) -> dict:
     """Return global counts/metrics, loss, and optional per-sample counts/metrics.
 
@@ -54,6 +55,7 @@ def evaluate(
     sliding-window inference. Samples with all pixels ignored still appear in
     per-sample reports, but do not affect confusion-matrix counts or loss.
 
+    prediction_dir optionally saves per-chip PNG comparisons; default saves none.
     The caller owns preprocessing, choosing validation vs test data, and saving.
     For weighted CrossEntropyLoss(mean), global loss is aggregated with target
     weights. For other criteria, it is a valid-pixel-weighted mean of batch
@@ -128,6 +130,15 @@ def evaluate(
 
             predictions = logits.argmax(dim=1)
             metrics.update(predictions, targets)
+
+            if prediction_dir is not None:
+                from src.evaluation.prediction_plots import save_prediction_plot
+                ids = _sample_ids(batch, sample_id_key, targets.shape[0], next_sample_index)
+                for idx, sample_id in enumerate(ids):
+                    save_prediction_plot(
+                        prediction_dir, sample_id, targets[idx], predictions[idx],
+                        num_classes, ignore_index, class_names, next_sample_index + idx,
+                    )
 
             category_rows = None
             if water_metrics is not None:
