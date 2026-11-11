@@ -1,0 +1,194 @@
+Configuration: configs\unet\01_unet_s1s2_full_pipeline_2e.yaml | Run: runs\sen1floods11\baselines\unet\unet_s1s2_full_pipeline_2e\20261111_181616_ed2f1193
+experiment:
+  name: unet_s1s2_full_pipeline_2e
+  seed: 234
+dataset:
+  name: sen1floods11
+  modalities:
+  - sar
+  - optical
+  train_csv: data/sen1floods11/splits/all_hand_labels/flood_train_data.csv
+  val_csv: data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv
+  test_csv: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv
+  bolivia_csv: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv
+model:
+  name: unet
+  in_channels: 15
+head:
+  num_classes: 2
+preprocessing:
+  normalization:
+    method: zscore
+    statistics: training_dataset
+    use_8_bit: false
+  band_indices:
+    sar:
+    - 0
+    - 1
+    optical:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+  crop_size: 120
+training:
+  epochs: 2
+  batch_size: 2
+  num_workers: 0
+  validate_every: 1
+  loss:
+    name: cross_entropy
+    ignore_index: 255
+    class_weights: null
+  optimizer:
+    name: adamw
+    learning_rate: 0.0001
+    weight_decay: 0.01
+  scheduler:
+    name: cosine_annealing
+    eta_min: 0.0
+evaluation:
+  aw_pw_fw: true
+  batch_size: 1
+  tile_size: 120
+  stride: 80
+  tile_batch_size: 1
+  class_names:
+  - non_water
+  - water
+  return_per_sample: true
+  sample_id_key: chip_id
+  checkpoint_metric: miou
+  save_predictions: false
+output:
+  directory: runs/sen1floods11/baselines/unet/unet_s1s2_full_pipeline_2e
+Configuration checks passed.
+[Build] preprocessing
+Loading cached statistics for sar: data\statistics\sen1floods11\57be4dc440bf\sar_0321578226838c8d.json
+Loading cached statistics for optical: data\statistics\sen1floods11\57be4dc440bf\optical_b2316b09fcd43301.json
+[Build] datasets and DataLoaders
+[Build] model
+[Build] loss
+[Build] optimizer
+[Build] scheduler
+
+Experiment setup (verified runtime objects)
+Experiment: unet_s1s2_full_pipeline_2e
+Model: unet | Class: UNet
+Initialization: random
+Model parameters: 14,795,906 total, 14,795,906 trainable
+Pretrained checkpoint: None
+Native input: None
+Input mapping: None
+Configured modalities: ['sar', 'optical']
+Device: cuda | GPU: NVIDIA GeForce RTX 3070
+Seed: 234 | Streams: {'model': 234, 'shuffle': 235, 'crops': 236, 'train_loader': 237, 'val_loader': 238, 'test_loader': 239, 'bolivia_loader': 240}
+Normalization: zscore | Bands: {'sar': [0, 1], 'optical': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]}
+Component stem: src.baselines.unet.DoubleConv | 45,888 total, 45,888 trainable
+Component down1: src.baselines.unet.DownBlock | 221,952 total, 221,952 trainable
+Component down2: src.baselines.unet.DownBlock | 886,272 total, 886,272 trainable
+Component down3: src.baselines.unet.DownBlock | 3,542,016 total, 3,542,016 trainable
+Component down4: src.baselines.unet.DownBlock | 4,721,664 total, 4,721,664 trainable
+Component up1: src.baselines.unet.UpBlock | 3,999,744 total, 3,999,744 trainable
+Component up2: src.baselines.unet.UpBlock | 1,000,448 total, 1,000,448 trainable
+Component up3: src.baselines.unet.UpBlock | 250,368 total, 250,368 trainable
+Component up4: src.baselines.unet.UpBlock | 127,424 total, 127,424 trainable
+Component classifier: torch.nn.modules.conv.Conv2d | 130 total, 130 trainable
+Data [train]: data/sen1floods11/splits/all_hand_labels/flood_train_data.csv | 252 samples | inputs=['sar', 'optical'] | batch=2 | workers=0 | crop=120
+Data [val]: data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv | 89 samples | inputs=['sar', 'optical'] | batch=1 | workers=0 | crop=None
+Data [test]: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv | 90 samples | inputs=['sar', 'optical'] | batch=1 | workers=0 | crop=None
+Data [bolivia]: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv | 15 samples | inputs=['sar', 'optical'] | batch=1 | workers=0 | crop=None
+Loss: CrossEntropyLoss | reduction=mean | weights=None | ignore_index=255
+Optimizer [0]: AdamW | LR=0.0001 | weight_decay=0.01 | betas=(0.9, 0.999)
+Scheduler: {'class': 'torch.optim.lr_scheduler.CosineAnnealingLR', 'T_max': 252, 'eta_min': 0.0, 'last_epoch': 0}
+Epochs: 2 | Validate every: 1
+Evaluation: tile=120 | stride=80 | tile_batch=1
+Checkpoint selection: validation miou
+Sanity checks: {'optimizer_matches_trainable_parameters': True, 'has_trainable_parameters': True, 'baseline_all_parameters_trainable': True}
+Output: runs\sen1floods11\baselines\unet\unet_s1s2_full_pipeline_2e\20261111_181616_ed2f1193
+
+Device: cuda | Run: runs\sen1floods11\baselines\unet\unet_s1s2_full_pipeline_2e\20261111_181616_ed2f1193 | Validate every 1 epochs
+
+First valid training batch:
+{
+  "inputs": {
+    "sar": {
+      "shape": [
+        2,
+        2,
+        120,
+        120
+      ],
+      "dtype": "torch.float32",
+      "device": "cuda:0",
+      "all_finite": true,
+      "min": -6.320306777954102,
+      "max": 4.822871208190918
+    },
+    "optical": {
+      "shape": [
+        2,
+        13,
+        120,
+        120
+      ],
+      "dtype": "torch.float32",
+      "device": "cuda:0",
+      "all_finite": true,
+      "min": -2.3576571941375732,
+      "max": 2.4031479358673096
+    }
+  },
+  "target": {
+    "shape": [
+      2,
+      120,
+      120
+    ],
+    "dtype": "torch.int64",
+    "valid_pixels": 28800,
+    "ignored_pixels": 0,
+    "valid_label_counts": {
+      "0": 27734,
+      "1": 1066
+    }
+  },
+  "logits": {
+    "shape": [
+      2,
+      2,
+      120,
+      120
+    ],
+    "dtype": "torch.float32",
+    "device": "cuda:0",
+    "all_finite": true,
+    "min": -5.086623668670654,
+    "max": 2.7864205837249756
+  },
+  "sanity_checks": {
+    "finite_inputs": true,
+    "finite_logits": true,
+    "output_matches_target": true,
+    "valid_label_range": true
+  }
+}
+Epoch 001/2 | LR 1.00e-04 | Train loss 0.7228 | Val loss 0.6080 | mIoU 0.6945 | non_water IoU 0.8947 | water IoU 0.4943
+Epoch 002/2 | LR 5.00e-05 | Train loss 0.4784 | Val loss 0.3561 | mIoU 0.7515 | non_water IoU 0.9221 | water IoU 0.5808
+test: mIoU 0.7942 | non_water IoU 0.9336 | water IoU 0.6548
+  AW: mean per-chip IoU=0.4437160646528503, pooled IoU=0.6547746120956517
+  PW: mean per-chip IoU=0.39797919968246087, pooled IoU=0.6555750124636947
+  FW: mean per-chip IoU=0.3848872284419415, pooled IoU=0.53617193304237
+bolivia: mIoU 0.7731 | non_water IoU 0.9072 | water IoU 0.6391
+  AW: mean per-chip IoU=0.46446069891153463, pooled IoU=0.6390548520541889
+  PW: mean per-chip IoU=0.3726760568182629, pooled IoU=0.3218337983478308
+  FW: mean per-chip IoU=0.3930143171575197, pooled IoU=0.6220282438029199

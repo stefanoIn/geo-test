@@ -1,0 +1,157 @@
+{
+  "experiment": {
+    "name": "resnet34_s1s2_3e",
+    "seed": 234
+  },
+  "model": "resnet_unet",
+  "modalities": [
+    "sar",
+    "optical"
+  ],
+  "training": {
+    "epochs_requested": 3,
+    "epochs_completed": 3,
+    "validate_every": 1,
+    "last_train_loss": 0.4292978102804145,
+    "minimum_train_loss": 0.4292978102804145,
+    "history_path": "metrics/history.json"
+  },
+  "best_validation_observed": {
+    "miou": {
+      "epoch": 1,
+      "value": 0.6170622359202145
+    },
+    "iou_per_class": [
+      {
+        "epoch": 3,
+        "value": 0.9008062599169868
+      },
+      {
+        "epoch": 1,
+        "value": 0.3578362659916891
+      }
+    ],
+    "water_iou": {
+      "epoch": 1,
+      "value": 0.3578362659916891
+    }
+  },
+  "best_checkpoint": {
+    "path": "checkpoints/best.pt",
+    "sha256": "c8e4e852d080e957da5a5a4043cdad174d10c07fd8ba22394d9135720419b11c",
+    "epoch": 1,
+    "selection_split": "val",
+    "selection_metric": "miou",
+    "selection_class": null,
+    "selection_value": 0.6170622359202145,
+    "train_loss": 0.9276765800355903,
+    "validation": {
+      "num_classes": 2,
+      "class_names": [
+        "non_water",
+        "water"
+      ],
+      "total_pixels": 23330816,
+      "valid_pixels": 20294725,
+      "ignored_pixels": 3036091,
+      "correct_pixels": 17945945,
+      "incorrect_pixels": 2348780,
+      "pixel_accuracy": 0.8842664781119232,
+      "miou": 0.6170622359202145,
+      "macro_f1": 0.7305670173952981,
+      "iou_per_class": [
+        0.8762882058487398,
+        0.3578362659916891
+      ],
+      "precision_per_class": [
+        0.9471258638325701,
+        0.4796294810102971
+      ],
+      "recall_per_class": [
+        0.9213607707098364,
+        0.5849213779912004
+      ],
+      "f1_per_class": [
+        0.9340656761761719,
+        0.5270683586144241
+      ],
+      "support_per_class": [
+        18057120,
+        2237605
+      ],
+      "predicted_per_class": [
+        17565904,
+        2728821
+      ],
+      "tp_per_class": [
+        16637122,
+        1308823
+      ],
+      "fp_per_class": [
+        928782,
+        1419998
+      ],
+      "fn_per_class": [
+        1419998,
+        928782
+      ],
+      "tn_per_class": [
+        1308823,
+        16637122
+      ],
+      "per_class": [
+        {
+          "class_id": 0,
+          "class_name": "non_water",
+          "tp": 16637122,
+          "fp": 928782,
+          "fn": 1419998,
+          "tn": 1308823,
+          "support": 18057120,
+          "predicted": 17565904,
+          "iou": 0.8762882058487398,
+          "precision": 0.9471258638325701,
+          "recall": 0.9213607707098364,
+          "f1": 0.9340656761761719
+        },
+        {
+          "class_id": 1,
+          "class_name": "water",
+          "tp": 1308823,
+          "fp": 1419998,
+          "fn": 928782,
+          "tn": 16637122,
+          "support": 2237605,
+          "predicted": 2728821,
+          "iou": 0.3578362659916891,
+          "precision": 0.4796294810102971,
+          "recall": 0.5849213779912004,
+          "f1": 0.5270683586144241
+        }
+      ],
+      "confusion_matrix": [
+        [
+          16637122,
+          1419998
+        ],
+        [
+          928782,
+          1308823
+        ]
+      ],
+      "binary_counts": {
+        "positive_class": 1,
+        "negative_class": 0,
+        "tp": 1308823,
+        "fp": 1419998,
+        "fn": 928782,
+        "tn": 16637122
+      },
+      "loss": 0.4731232661249841,
+      "num_samples": 89,
+      "evaluated_samples": 86,
+      "excluded_all_ignore_samples": 3
+    }
+  },
+  "evaluation_of_best_checkpoint": {}
+}
