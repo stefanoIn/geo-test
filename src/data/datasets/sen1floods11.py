@@ -60,6 +60,7 @@ class Sen1Floods11Dataset(Dataset):
         self.modalities = tuple(modalities)
         self.preprocess_func = preprocess_func
         self.data_list = load_split_paths(split_csv, modalities=self.modalities)
+        self.excluded_all_ignore_chips = []
         if include_permanent_water:
             for paths in self.data_list:
                 chip_id = paths["target"].name.removesuffix("_LabelHand.tif")
@@ -67,6 +68,22 @@ class Sen1Floods11Dataset(Dataset):
                 if not reference.is_file():
                     raise FileNotFoundError(f"AW/PW/FW requires {reference}")
                 paths["permanent_water"] = reference
+
+    def exclude_all_ignore_chips(self):
+        """Filter training chips only; retain every chip with any valid label."""
+        retained = []
+        excluded = []
+        for paths in self.data_list:
+            with rasterio.open(paths["target"]) as src:
+                mask = src.read(1)
+            if ((mask != -1) & (mask != 255)).any():
+                retained.append(paths)
+            else:
+                excluded.append(paths["target"].name.removesuffix("_LabelHand.tif"))
+        if not retained:
+            raise ValueError("No training chips contain valid target pixels")
+        self.data_list = retained
+        self.excluded_all_ignore_chips.extend(excluded)
 
     def __len__(self):
         return len(self.data_list)

@@ -2,7 +2,8 @@
 
 import torch
 
-def random_crop(sample, size, generator=None, *, include_metadata=False):
+def random_crop(sample, size, generator=None, *, include_metadata=False,
+                require_valid_target=False, ignore_index=255):
     """
     Apply the same random crop to all spatial tensors.
 
@@ -12,6 +13,8 @@ def random_crop(sample, size, generator=None, *, include_metadata=False):
         size: Crop size (int or tuple of height, width).
         generator: Optional PyTorch random generator.
         include_metadata: Attach zero-based crop coordinates without extra RNG draws.
+        require_valid_target: Resample windows with no supervised pixels.
+        ignore_index: Target value excluded from supervision.
 
     Returns:
         Dictionary containing the cropped tensors.
@@ -54,18 +57,28 @@ def random_crop(sample, size, generator=None, *, include_metadata=False):
     if crop_h > height or crop_w > width:
         raise ValueError("Crop size exceeds the input size")
 
-    # Sample coordinates only once.
-    top = torch.randint(
-        height - crop_h + 1,
-        (1,),
-        generator=generator,
-    ).item()
+    target = sample.get("target")
+    if require_valid_target and (not isinstance(target, torch.Tensor) or target.ndim != 2):
+        raise ValueError("Valid crop sampling requires a target mask [H, W]")
 
-    left = torch.randint(
-        width - crop_w + 1,
-        (1,),
-        generator=generator,
-    ).item()
+    # Rejection sampling preserves uniform sampling over valid crop positions.
+    for _ in range(32 if require_valid_target else 1):
+        top = torch.randint(height - crop_h + 1, (1,), generator=generator).item()
+        left = torch.randint(width - crop_w + 1, (1,), generator=generator).item()
+        if not require_valid_target or (target[top:top + crop_h, left:left + crop_w] != ignore_index).any():
+            break
+    else:
+        # Sparse labels: enumerate valid windows instead of retrying indefinitely.
+        # Integral-image sums keep the fallback uniform over eligible positions.
+        valid = (target != ignore_index).to(torch.int64)
+        integral = torch.nn.functional.pad(valid.cumsum(0).cumsum(1), (1, 0, 1, 0))
+        counts = (integral[crop_h:, crop_w:] - integral[:-crop_h, crop_w:]
+                  - integral[crop_h:, :-crop_w] + integral[:-crop_h, :-crop_w])
+        positions = (counts > 0).nonzero()
+        if len(positions) == 0:
+            raise ValueError("Cannot sample a valid crop from an entirely ignored target")
+        index = torch.randint(len(positions), (1,), generator=generator).item()
+        top, left = positions[index].tolist()
 
     # Apply identical coordinates to every spatial tensor.
     result = {

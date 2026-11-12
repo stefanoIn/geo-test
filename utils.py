@@ -360,6 +360,7 @@ class TrainingPreprocess:
             self.worker_seed = worker_seed
         return self.normalizer(random_crop(
             sample, self.crop_size, generator=self.generator, include_metadata=True,
+            require_valid_target=True,
         ))
 
 
@@ -398,6 +399,12 @@ def build_loaders(config, normalizer):
                 raise ValueError(f"Split overlap: {chip} in {seen[chip]} and {split}")
             seen[chip] = split
             
+        if split == "train":
+            dataset.exclude_all_ignore_chips()
+            print(f"Training chips: {len(dataset)} retained; "
+                  f"{len(dataset.excluded_all_ignore_chips)} entirely ignored excluded. "
+                  "Crops require at least one valid pixel (water-free crops retained).", flush=True)
+
         loaders[split] = DataLoader(
             dataset,
             batch_size=(config["training"]["batch_size"] if split == "train"
@@ -755,6 +762,9 @@ def report_runtime_setup(run_dir, config, normalizer, loaders, model, criterion,
                 "modalities": list(loader.dataset.modalities),
                 "transform": kind(loader.dataset.preprocess_func),
                 "crop_size": getattr(loader.dataset.preprocess_func, "crop_size", None),
+                "excluded_all_ignore_chips": loader.dataset.excluded_all_ignore_chips,
+                "crop_sampling": ("uniform_valid_windows_v1; 32 retries then exact valid-window sampling"
+                                  if split == "train" else None),
                 "loader_seed": loader.generator.initial_seed() if loader.generator else None,
             }
             for split, loader in loaders.items()
