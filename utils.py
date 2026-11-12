@@ -358,7 +358,9 @@ class TrainingPreprocess:
         if self.generator is None or self.worker_seed != worker_seed:
             self.generator = torch.Generator().manual_seed((self.seed + worker_seed) % (2**63))
             self.worker_seed = worker_seed
-        return self.normalizer(random_crop(sample, self.crop_size, generator=self.generator))
+        return self.normalizer(random_crop(
+            sample, self.crop_size, generator=self.generator, include_metadata=True,
+        ))
 
 
 def experiment_random_seeds(seed):
@@ -911,3 +913,35 @@ def report_first_training_batch(run_dir, images, target, logits, ignore_index=25
     print(json.dumps(report, indent=2, allow_nan=False), flush=True)
     if not all(report["sanity_checks"].values()):
         raise RuntimeError(f"First-batch sanity checks failed: {report['sanity_checks']}")
+
+
+def log_training_crops(path, epoch, batch_index, batch, ignore_index=255):
+    """Append one JSONL record per sampled crop, including skipped batches.
+
+    Called by the trainer in the main process, after worker results are collated.
+    Coordinates are zero-based row/column offsets in the original chip.
+    Records describe batches received, not proof of completed optimizer updates.
+    """
+    metadata = batch.get("crop_metadata")
+    if metadata is None:
+        raise ValueError("Crop logging requires crop_metadata from TrainingPreprocess")
+    targets = batch["target"].detach().cpu()
+    ids = batch["chip_id"]
+    batch_valid = int((targets != ignore_index).sum())
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as stream:
+        for i, target in enumerate(targets):
+            valid = target != ignore_index
+            labels, counts = torch.unique(target[valid], return_counts=True)
+            record = {
+                "epoch": epoch, "batch": batch_index, "position_in_batch": i,
+                "batch_size": len(targets), "chip_id": str(ids[i]),
+                "crop": {key: int(value[i]) for key, value in metadata.items()},
+                "valid_pixels": int(valid.sum()),
+                "ignored_pixels": int((~valid).sum()),
+                "class_pixel_counts": {str(int(k)): int(v) for k, v in zip(labels, counts)},
+                "batch_valid_pixels": batch_valid,
+                "batch_skipped_all_ignore": batch_valid == 0,
+            }
+            stream.write(json.dumps(record, allow_nan=False) + "\n")

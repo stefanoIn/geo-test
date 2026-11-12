@@ -2,7 +2,7 @@
 
 import torch
 
-def random_crop(sample, size, generator=None):
+def random_crop(sample, size, generator=None, *, include_metadata=False):
     """
     Apply the same random crop to all spatial tensors.
 
@@ -11,6 +11,7 @@ def random_crop(sample, size, generator=None):
                 and optionally a target mask [H, W].
         size: Crop size (int or tuple of height, width).
         generator: Optional PyTorch random generator.
+        include_metadata: Attach zero-based crop coordinates without extra RNG draws.
 
     Returns:
         Dictionary containing the cropped tensors.
@@ -67,7 +68,7 @@ def random_crop(sample, size, generator=None):
     ).item()
 
     # Apply identical coordinates to every spatial tensor.
-    return {
+    result = {
         key: (
             value[
                 ..., top:top + crop_h, left:left + crop_w
@@ -76,3 +77,10 @@ def random_crop(sample, size, generator=None):
         )
         for key, value in sample.items()
     }
+
+    if include_metadata:
+        result["crop_metadata"] = {
+            "top": top, "left": left, "height": crop_h, "width": crop_w,
+            "source_height": height, "source_width": width,
+        }
+    return result

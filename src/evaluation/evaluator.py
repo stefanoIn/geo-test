@@ -48,6 +48,8 @@ def evaluate(
     class_names=None,
     aw_pw_fw: bool = False,
     prediction_dir=None,
+    sample_log_path=None,
+    sample_log_metadata=None,
 ) -> dict:
     """Return global counts/metrics, loss, and optional per-sample counts/metrics.
 
@@ -56,6 +58,7 @@ def evaluate(
     per-sample reports, but do not affect confusion-matrix counts or loss.
 
     prediction_dir optionally saves per-chip PNG comparisons; default saves none.
+    sample_log_path optionally appends consumed chip order and class counts as JSONL.
     The caller owns preprocessing, choosing validation vs test data, and saving.
     For weighted CrossEntropyLoss(mean), global loss is aggregated with target
     weights. For other criteria, it is a valid-pixel-weighted mean of batch
@@ -130,6 +133,29 @@ def evaluate(
 
             predictions = logits.argmax(dim=1)
             metrics.update(predictions, targets)
+
+            # Record the actual consumed order, independent of per-sample reports.
+            if sample_log_path is not None:
+                ids = _sample_ids(batch, sample_id_key, targets.shape[0], next_sample_index)
+                log_path = Path(sample_log_path)
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with log_path.open("a", encoding="utf-8") as stream:
+                    for idx, sample_id in enumerate(ids):
+                        target = targets[idx].detach().cpu()
+                        prediction = predictions[idx].detach().cpu()
+                        valid = target != ignore_index
+                        record = {
+                            **(sample_log_metadata or {}),
+                            "position": next_sample_index + idx,
+                            "chip_id": sample_id, "height": target.shape[0], "width": target.shape[1],
+                            "valid_pixels": int(valid.sum()), "ignored_pixels": int((~valid).sum()),
+                            "target_class_counts": torch.bincount(target[valid], minlength=num_classes).tolist(),
+                            "predicted_class_counts_on_valid_pixels": torch.bincount(
+                                prediction[valid], minlength=num_classes).tolist(),
+                            "excluded_all_ignore": not bool(valid.any()),
+                            "tile_size": tile_size, "stride": stride,
+                        }
+                        stream.write(json.dumps(record, allow_nan=False) + "\n")
 
             if prediction_dir is not None:
                 from src.evaluation.prediction_plots import save_prediction_plot

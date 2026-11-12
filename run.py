@@ -22,7 +22,7 @@ from training.checkpoints import save_checkpoint, load_checkpoint
 from utils import (
     capture_run_output, report_runtime_setup, report_first_training_batch,
     load_config, build_dataset, build_preprocessing, build_loaders,
-    experiment_random_seeds, is_supervised_baseline,
+    experiment_random_seeds, is_supervised_baseline, log_training_crops,
     build_loss, build_optimizer, build_scheduler, file_sha256, write_json,
     build_run_summary, save_training_plots, save_test_plots, format_iou_metrics,
 )
@@ -121,7 +121,7 @@ def _run_experiment(config, run_dir, device):
     options = config["evaluation"]
 
     # Same inference settings for validation and optional held-out splits.
-    def evaluate_split(split):
+    def evaluate_split(split, epoch=None):
         return evaluate(
             model, loaders[split], device,
             num_classes=config["head"]["num_classes"],
@@ -133,6 +133,8 @@ def _run_experiment(config, run_dir, device):
             sample_id_key=options.get("sample_id_key", "chip_id"),
             class_names=options.get("class_names"),
             aw_pw_fw=options.get("aw_pw_fw", False),
+            sample_log_path=(run_dir / "debug" / "validation_chips.jsonl" if split == "val" else None),
+            sample_log_metadata={"split": split, "epoch": epoch},
             prediction_dir=(
                 run_dir / "predictions" / split
                 if split in {"test", "bolivia"} and options.get("save_predictions", False)
@@ -164,6 +166,9 @@ def _run_experiment(config, run_dir, device):
             run_dir, images, target, logits, criterion.ignore_index
         )
 
+    crop_log_path = run_dir / "debug" / "training_crops.jsonl"
+    print(f"Crop debug log (epochs 1-{epochs}): {crop_log_path}", flush=True)
+
     for epoch in range(1, epochs + 1):
         lr_start = optimizer.param_groups[0]["lr"]
         loss = train_one_epoch(
@@ -171,6 +176,10 @@ def _run_experiment(config, run_dir, device):
             scheduler=scheduler,
             input_keys=config["dataset"]["modalities"],
             batch_observer=observe_first_batch if epoch == 1 else None,
+            batch_logger=(
+                lambda batch_index, batch: log_training_crops(
+                    crop_log_path, epoch, batch_index, batch, criterion.ignore_index)
+            ),
         )
         row = {
             "epoch": epoch,
@@ -181,7 +190,7 @@ def _run_experiment(config, run_dir, device):
 
         validation = None
         if epoch % every == 0 or epoch == epochs:
-            validation = evaluate_split("val")
+            validation = evaluate_split("val", epoch=epoch)
             save_evaluation_report(
                 run_dir / "metrics" / f"validation_{epoch:03d}.json",
                 validation, metadata={"split": "val", "epoch": epoch},

@@ -1,0 +1,184 @@
+Configuration: configs\unet\unet_s1_stability_20e.yaml | Run: runs\sen1floods11\baselines\unet\unet_s1_stability_20e\20261111_232130_873ce528
+experiment:
+  name: unet_s1_stability_20e
+  seed: 234
+dataset:
+  name: sen1floods11
+  modalities:
+  - sar
+  train_csv: data/sen1floods11/splits/all_hand_labels/flood_train_data.csv
+  val_csv: data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv
+  test_csv: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv
+  bolivia_csv: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv
+model:
+  name: unet
+  in_channels: 2
+head:
+  num_classes: 2
+preprocessing:
+  normalization:
+    method: zscore
+    statistics: training_dataset
+    use_8_bit: false
+  band_indices:
+    sar:
+    - 0
+    - 1
+  crop_size: 120
+training:
+  epochs: 20
+  batch_size: 2
+  num_workers: 0
+  validate_every: 1
+  loss:
+    name: cross_entropy
+    ignore_index: 255
+    class_weights: null
+  optimizer:
+    name: adamw
+    learning_rate: 0.0001
+    weight_decay: 0.01
+  scheduler:
+    name: cosine_annealing
+    eta_min: 0.0
+evaluation:
+  aw_pw_fw: true
+  batch_size: 1
+  tile_size: 120
+  stride: 80
+  tile_batch_size: 1
+  class_names:
+  - non_water
+  - water
+  return_per_sample: true
+  sample_id_key: chip_id
+  checkpoint_metric: miou
+  save_predictions: false
+output:
+  directory: runs/sen1floods11/baselines/unet/unet_s1_stability_20e
+Configuration checks passed.
+[Build] preprocessing
+Loading cached statistics for sar: data\statistics\sen1floods11\57be4dc440bf\sar_0321578226838c8d.json
+[Build] datasets and DataLoaders
+[Build] model
+[Build] loss
+[Build] optimizer
+[Build] scheduler
+
+Experiment setup (verified runtime objects)
+Experiment: unet_s1_stability_20e
+Model: unet | Class: UNet
+Initialization: random
+Model parameters: 14,788,418 total, 14,788,418 trainable
+Pretrained checkpoint: None
+Native input: None
+Input mapping: None
+Configured modalities: ['sar']
+Device: cuda | GPU: NVIDIA GeForce RTX 3070
+Seed: 234 | Streams: {'model': 234, 'shuffle': 235, 'crops': 236, 'train_loader': 237, 'val_loader': 238, 'test_loader': 239, 'bolivia_loader': 240}
+Normalization: zscore | Bands: {'sar': [0, 1]}
+Component stem: src.baselines.unet.DoubleConv | 38,400 total, 38,400 trainable
+Component down1: src.baselines.unet.DownBlock | 221,952 total, 221,952 trainable
+Component down2: src.baselines.unet.DownBlock | 886,272 total, 886,272 trainable
+Component down3: src.baselines.unet.DownBlock | 3,542,016 total, 3,542,016 trainable
+Component down4: src.baselines.unet.DownBlock | 4,721,664 total, 4,721,664 trainable
+Component up1: src.baselines.unet.UpBlock | 3,999,744 total, 3,999,744 trainable
+Component up2: src.baselines.unet.UpBlock | 1,000,448 total, 1,000,448 trainable
+Component up3: src.baselines.unet.UpBlock | 250,368 total, 250,368 trainable
+Component up4: src.baselines.unet.UpBlock | 127,424 total, 127,424 trainable
+Component classifier: torch.nn.modules.conv.Conv2d | 130 total, 130 trainable
+Data [train]: data/sen1floods11/splits/all_hand_labels/flood_train_data.csv | 252 samples | inputs=['sar'] | batch=2 | workers=0 | crop=120
+Data [val]: data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv | 89 samples | inputs=['sar'] | batch=1 | workers=0 | crop=None
+Data [test]: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv | 90 samples | inputs=['sar'] | batch=1 | workers=0 | crop=None
+Data [bolivia]: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv | 15 samples | inputs=['sar'] | batch=1 | workers=0 | crop=None
+Loss: CrossEntropyLoss | reduction=mean | weights=None | ignore_index=255
+Optimizer [0]: AdamW | LR=0.0001 | weight_decay=0.01 | betas=(0.9, 0.999)
+Scheduler: {'class': 'torch.optim.lr_scheduler.CosineAnnealingLR', 'T_max': 2520, 'eta_min': 0.0, 'last_epoch': 0}
+Epochs: 20 | Validate every: 1
+Evaluation: tile=120 | stride=80 | tile_batch=1
+Checkpoint selection: validation miou
+Sanity checks: {'optimizer_matches_trainable_parameters': True, 'has_trainable_parameters': True, 'baseline_all_parameters_trainable': True}
+Output: runs\sen1floods11\baselines\unet\unet_s1_stability_20e\20261111_232130_873ce528
+
+Device: cuda | Run: runs\sen1floods11\baselines\unet\unet_s1_stability_20e\20261111_232130_873ce528 | Validate every 1 epochs
+Crop debug log (epochs 1-20): runs\sen1floods11\baselines\unet\unet_s1_stability_20e\20261111_232130_873ce528\debug\training_crops.jsonl
+
+First valid training batch:
+{
+  "inputs": {
+    "sar": {
+      "shape": [
+        2,
+        2,
+        120,
+        120
+      ],
+      "dtype": "torch.float32",
+      "device": "cuda:0",
+      "all_finite": true,
+      "min": -6.320306777954102,
+      "max": 4.822871208190918
+    }
+  },
+  "target": {
+    "shape": [
+      2,
+      120,
+      120
+    ],
+    "dtype": "torch.int64",
+    "valid_pixels": 28800,
+    "ignored_pixels": 0,
+    "valid_label_counts": {
+      "0": 27734,
+      "1": 1066
+    }
+  },
+  "logits": {
+    "shape": [
+      2,
+      2,
+      120,
+      120
+    ],
+    "dtype": "torch.float32",
+    "device": "cuda:0",
+    "all_finite": true,
+    "min": -3.460475444793701,
+    "max": 2.443260431289673
+  },
+  "sanity_checks": {
+    "finite_inputs": true,
+    "finite_logits": true,
+    "output_matches_target": true,
+    "valid_label_range": true
+  }
+}
+Epoch 001/20 | LR 1.00e-04 | Train loss 0.5351 | Val loss 0.3732 | mIoU 0.7313 | non_water IoU 0.9319 | water IoU 0.5307
+Epoch 002/20 | LR 9.94e-05 | Train loss 0.3611 | Val loss 1.1156 | mIoU 0.4534 | non_water IoU 0.8894 | water IoU 0.0173
+Epoch 003/20 | LR 9.76e-05 | Train loss 0.3104 | Val loss 0.2234 | mIoU 0.7314 | non_water IoU 0.9379 | water IoU 0.5248
+Epoch 004/20 | LR 9.46e-05 | Train loss 0.3012 | Val loss 0.2329 | mIoU 0.7337 | non_water IoU 0.9388 | water IoU 0.5286
+Epoch 005/20 | LR 9.05e-05 | Train loss 0.2612 | Val loss 0.2081 | mIoU 0.7180 | non_water IoU 0.9383 | water IoU 0.4978
+Epoch 006/20 | LR 8.54e-05 | Train loss 0.2455 | Val loss 0.1933 | mIoU 0.7387 | non_water IoU 0.9365 | water IoU 0.5408
+Epoch 007/20 | LR 7.94e-05 | Train loss 0.2441 | Val loss 0.2273 | mIoU 0.6728 | non_water IoU 0.9282 | water IoU 0.4174
+Epoch 008/20 | LR 7.27e-05 | Train loss 0.2284 | Val loss 0.1808 | mIoU 0.7310 | non_water IoU 0.9399 | water IoU 0.5221
+Epoch 009/20 | LR 6.55e-05 | Train loss 0.2037 | Val loss 0.2094 | mIoU 0.5998 | non_water IoU 0.9156 | water IoU 0.2840
+Epoch 010/20 | LR 5.79e-05 | Train loss 0.1949 | Val loss 0.2097 | mIoU 0.5793 | non_water IoU 0.9139 | water IoU 0.2448
+Epoch 011/20 | LR 5.01e-05 | Train loss 0.1821 | Val loss 0.1803 | mIoU 0.6847 | non_water IoU 0.9330 | water IoU 0.4364
+Epoch 012/20 | LR 4.22e-05 | Train loss 0.2050 | Val loss 0.1667 | mIoU 0.7200 | non_water IoU 0.9392 | water IoU 0.5008
+Epoch 013/20 | LR 3.47e-05 | Train loss 0.1749 | Val loss 0.1852 | mIoU 0.7038 | non_water IoU 0.9358 | water IoU 0.4718
+Epoch 014/20 | LR 2.74e-05 | Train loss 0.1692 | Val loss 0.1654 | mIoU 0.7501 | non_water IoU 0.9397 | water IoU 0.5605
+Epoch 015/20 | LR 2.07e-05 | Train loss 0.2006 | Val loss 0.1675 | mIoU 0.6893 | non_water IoU 0.9338 | water IoU 0.4448
+Epoch 016/20 | LR 1.47e-05 | Train loss 0.1772 | Val loss 0.1667 | mIoU 0.7304 | non_water IoU 0.9397 | water IoU 0.5212
+Epoch 017/20 | LR 9.66e-06 | Train loss 0.1596 | Val loss 0.1758 | mIoU 0.6852 | non_water IoU 0.9327 | water IoU 0.4377
+Epoch 018/20 | LR 5.53e-06 | Train loss 0.1738 | Val loss 0.2048 | mIoU 0.6314 | non_water IoU 0.9207 | water IoU 0.3422
+Epoch 019/20 | LR 2.51e-06 | Train loss 0.1735 | Val loss 0.1726 | mIoU 0.6999 | non_water IoU 0.9345 | water IoU 0.4653
+Epoch 020/20 | LR 6.45e-07 | Train loss 0.1731 | Val loss 0.1533 | mIoU 0.7421 | non_water IoU 0.9427 | water IoU 0.5414
+test: mIoU 0.7526 | non_water IoU 0.9323 | water IoU 0.5730
+  AW: mean per-chip IoU=0.3602508726222118, pooled IoU=0.5729814752548037
+  PW: mean per-chip IoU=0.4473341647394464, pooled IoU=0.6490029181640861
+  FW: mean per-chip IoU=0.28629931308175877, pooled IoU=0.4533431561467375
+bolivia: mIoU 0.7909 | non_water IoU 0.9320 | water IoU 0.6498
+  AW: mean per-chip IoU=0.40401432678088334, pooled IoU=0.6497573252569884
+  PW: mean per-chip IoU=0.5326775326737108, pooled IoU=0.5864872856298049
+  FW: mean per-chip IoU=0.33588578253692813, pooled IoU=0.6318647002575744

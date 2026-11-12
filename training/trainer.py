@@ -10,7 +10,7 @@ import torch
 from torch import nn
 
 
-def train_one_epoch(model, train_loader, optimizer, criterion, device, scheduler=None, input_keys=None, batch_observer=None):
+def train_one_epoch(model, train_loader, optimizer, criterion, device, scheduler=None, input_keys=None, batch_observer=None, batch_logger=None):
     """Train for one epoch; return the mean loss over valid target pixels.
 
     ``scheduler``, when provided, is stepped after each optimizer update,
@@ -24,7 +24,10 @@ def train_one_epoch(model, train_loader, optimizer, criterion, device, scheduler
     total_loss = 0.0
     total_weight = 0.0
 
-    for batch in train_loader:
+    for batch_index, batch in enumerate(train_loader, start=1):
+        # Log consumed batches in order, including all-ignore batches we skip.
+        if batch_logger is not None:
+            batch_logger(batch_index, batch)
         target = batch["target"].to(device)
         valid = target != ignore_index
         if not valid.any().item():
