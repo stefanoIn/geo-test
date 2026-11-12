@@ -4,12 +4,15 @@ from pathlib import Path
 
 # Each YAML defines the full experiment. Re-running a trial creates a new run folder.
 CONFIGS = [
-    "configs/unet/unet_s1_stability_20e.yaml",
-    "configs/unet/unet_s2_stability_20e.yaml",
-    "configs/unet/unet_s1s2_stability_20e.yaml",
-    "configs/resnet_unet/resnet50_unet_s1_stability_20e.yaml",
-    "configs/resnet_unet/resnet50_unet_s2_stability_20e.yaml",
-    "configs/resnet_unet/resnet50_unet_s1s2_stability_20e.yaml",
+    "configs/resnet_unet/resnet18_unet_s1_comparison_50e.yaml",
+    "configs/resnet_unet/resnet18_unet_s2_comparison_50e.yaml",
+    "configs/resnet_unet/resnet18_unet_s1s2_comparison_50e.yaml",
+    "configs/resnet_unet/resnet34_unet_s1_comparison_50e.yaml",
+    "configs/resnet_unet/resnet34_unet_s2_comparison_50e.yaml",
+    "configs/resnet_unet/resnet34_unet_s1s2_comparison_50e.yaml",
+    "configs/resnet_unet/resnet50_unet_s1_comparison_50e.yaml",
+    "configs/resnet_unet/resnet50_unet_s2_comparison_50e.yaml",
+    "configs/resnet_unet/resnet50_unet_s1s2_comparison_50e.yaml",
 ]
 
 if __name__ == "__main__":

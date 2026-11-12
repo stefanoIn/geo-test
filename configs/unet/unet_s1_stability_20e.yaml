@@ -2,7 +2,7 @@
 # Validate every epoch; test/Bolivia use the best validation-mIoU checkpoint.
 experiment:
   name: unet_s1_stability_20e
-  seed: 234
+  seed: 42
 dataset:
   name: sen1floods11
   modalities:
@@ -28,7 +28,7 @@ preprocessing:
   crop_size: 120
 training:
   epochs: 20
-  batch_size: 2
+  batch_size: 8
   num_workers: 0
   validate_every: 1
   loss:

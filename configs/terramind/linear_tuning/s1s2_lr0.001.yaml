@@ -2,7 +2,7 @@
 # AdamW uses its standard betas (0.9, 0.999). Test and Bolivia are excluded.
 experiment:
   name: terramind_s1s2_linear_cosine_lr0.001_e25
-  seed: 234
+  seed: 42
 dataset:
   name: sen1floods11
   modalities:
@@ -56,7 +56,7 @@ preprocessing:
   crop_size: 128
 training:
   epochs: 25
-  batch_size: 1
+  batch_size: 8
   num_workers: 0
   loss:
     name: cross_entropy

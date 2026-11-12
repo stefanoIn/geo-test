@@ -2,7 +2,7 @@
 # Not a final benchmark or hyperparameter-optimization result.
 experiment:
   name: resnet18_s1s2_3e
-  seed: 234
+  seed: 42
 dataset:
   name: sen1floods11
   modalities:
@@ -42,7 +42,7 @@ preprocessing:
   crop_size: 120
 training:
   epochs: 3
-  batch_size: 4
+  batch_size: 8
   num_workers: 0
   validate_every: 1
   loss:
