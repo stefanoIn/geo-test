@@ -165,6 +165,13 @@ def load_config(path, *, show_config=False):
     
     if scheduler and scheduler["name"] == "cosine_annealing":
         eta_min = scheduler.get("eta_min", 0.0)
+        warmup_epochs = scheduler.get("warmup_epochs", 0)
+        start_factor = scheduler.get("warmup_start_factor", 0.1)
+        if type(warmup_epochs) is not int or not 0 <= warmup_epochs < config["training"]["epochs"]:
+            raise ValueError("training.scheduler.warmup_epochs must be an integer from 0 to epochs - 1")
+        if (not isinstance(start_factor, (int, float)) or not np.isfinite(start_factor)
+                or not 0 < start_factor <= 1):
+            raise ValueError("training.scheduler.warmup_start_factor must be in (0, 1]")
         
         if (not isinstance(eta_min, (int, float)) or not np.isfinite(eta_min)
                 or not 0 <= eta_min <= config["training"]["optimizer"]["learning_rate"]):
@@ -443,8 +450,27 @@ def build_scheduler(config, optimizer, batches_per_epoch, epochs=None):
     if config["name"] == "cosine_annealing":
         if type(epochs) is not int or epochs < 1 or batches_per_epoch < 1:
             raise ValueError("Cosine annealing requires positive epochs and batches_per_epoch")
-        # Decay over the configured training budget, with no warm restarts.
-        # The trainer advances this after each optimizer update; ignored batches do not advance it.
+        warmup_epochs = config.get("warmup_epochs", 0)
+        start_factor = config.get("warmup_start_factor", 0.1)
+        if type(warmup_epochs) is not int or not 0 <= warmup_epochs < epochs:
+            raise ValueError("warmup_epochs must be an integer from 0 to epochs - 1")
+        if (not isinstance(start_factor, (int, float)) or not np.isfinite(start_factor)
+                or not 0 < start_factor <= 1):
+            raise ValueError("warmup_start_factor must be in (0, 1]")
+        # Warmup is part of the epoch budget. Both phases step after optimizer updates.
+        if warmup_epochs:
+            warmup_steps = warmup_epochs * batches_per_epoch
+            warmup = torch.optim.lr_scheduler.LinearLR(
+                optimizer, start_factor=start_factor, end_factor=1.0,
+                total_iters=warmup_steps,
+            )
+            cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, T_max=(epochs - warmup_epochs) * batches_per_epoch,
+                eta_min=config.get("eta_min", 0.0),
+            )
+            return torch.optim.lr_scheduler.SequentialLR(
+                optimizer, schedulers=[warmup, cosine], milestones=[warmup_steps],
+            )
         return torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=epochs * batches_per_epoch,
             eta_min=config.get("eta_min", 0.0),
@@ -817,6 +843,7 @@ def report_runtime_setup(run_dir, config, normalizer, loaders, model, criterion,
         },
         "scheduler": None if scheduler is None else {
             "class": kind(scheduler),
+            "state": scheduler.state_dict(),
             **{
                 key: getattr(scheduler, key)
                 for key in ("T_max", "eta_min", "T_0", "T_mult", "last_epoch")
