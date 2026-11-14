@@ -1,0 +1,192 @@
+{
+  "experiment": {
+    "name": "croma_s1s2_linear_cosine_lr0.001_e50_warmup5",
+    "seed": 42
+  },
+  "model": "croma",
+  "modalities": [
+    "sar",
+    "optical"
+  ],
+  "training": {
+    "epochs_requested": 50,
+    "epochs_completed": 50,
+    "validate_every": 1,
+    "last_train_loss": 0.07600020487234482,
+    "minimum_train_loss": 0.0664555026919299,
+    "history_path": "metrics/history.json"
+  },
+  "best_validation_observed": {
+    "miou": {
+      "epoch": 36,
+      "value": 0.8676243990850736
+    },
+    "iou_per_class": [
+      {
+        "epoch": 36,
+        "value": 0.968814293531178
+      },
+      {
+        "epoch": 36,
+        "value": 0.7664345046389691
+      }
+    ],
+    "water_iou": {
+      "epoch": 36,
+      "value": 0.7664345046389691
+    }
+  },
+  "best_checkpoint": {
+    "path": "checkpoints/best.pt",
+    "sha256": "d938399c250568dac7f572f65a17282ecc12b763d05f14703f20f4dbd5b55b23",
+    "epoch": 36,
+    "selection_split": "val",
+    "selection_metric": "miou",
+    "selection_class": null,
+    "selection_value": 0.8676243990850736,
+    "train_loss": 0.07953420000978362,
+    "validation": {
+      "num_classes": 2,
+      "class_names": [
+        "non_water",
+        "water"
+      ],
+      "total_pixels": 23330816,
+      "valid_pixels": 20294725,
+      "ignored_pixels": 3036091,
+      "correct_pixels": 19720575,
+      "incorrect_pixels": 574150,
+      "pixel_accuracy": 0.9717093973926723,
+      "miou": 0.8676243990850736,
+      "macro_f1": 0.9259679491789331,
+      "iou_per_class": [
+        0.968814293531178,
+        0.7664345046389691
+      ],
+      "precision_per_class": [
+        0.9805631485194738,
+        0.8951877257810009
+      ],
+      "recall_per_class": [
+        0.9877836554223486,
+        0.8419926662659406
+      ],
+      "f1_per_class": [
+        0.9841601584409017,
+        0.8677757399169646
+      ],
+      "support_per_class": [
+        18057120,
+        2237605
+      ],
+      "predicted_per_class": [
+        18190086,
+        2104639
+      ],
+      "tp_per_class": [
+        17836528,
+        1884047
+      ],
+      "fp_per_class": [
+        353558,
+        220592
+      ],
+      "fn_per_class": [
+        220592,
+        353558
+      ],
+      "tn_per_class": [
+        1884047,
+        17836528
+      ],
+      "per_class": [
+        {
+          "class_id": 0,
+          "class_name": "non_water",
+          "tp": 17836528,
+          "fp": 353558,
+          "fn": 220592,
+          "tn": 1884047,
+          "support": 18057120,
+          "predicted": 18190086,
+          "iou": 0.968814293531178,
+          "precision": 0.9805631485194738,
+          "recall": 0.9877836554223486,
+          "f1": 0.9841601584409017
+        },
+        {
+          "class_id": 1,
+          "class_name": "water",
+          "tp": 1884047,
+          "fp": 220592,
+          "fn": 353558,
+          "tn": 17836528,
+          "support": 2237605,
+          "predicted": 2104639,
+          "iou": 0.7664345046389691,
+          "precision": 0.8951877257810009,
+          "recall": 0.8419926662659406,
+          "f1": 0.8677757399169646
+        }
+      ],
+      "confusion_matrix": [
+        [
+          17836528,
+          220592
+        ],
+        [
+          353558,
+          1884047
+        ]
+      ],
+      "binary_counts": {
+        "positive_class": 1,
+        "negative_class": 0,
+        "tp": 1884047,
+        "fp": 220592,
+        "fn": 353558,
+        "tn": 17836528
+      },
+      "loss": 0.0743602322182184,
+      "aw_pw_fw": {
+        "protocol": "sen1floods11_exclude_all_ignore_v1; per-chip epsilon=1e-7; valid empty union scores 1; other water ignored; all-ignore chips excluded",
+        "summary": {
+          "AW": {
+            "evaluated_chips": 86,
+            "excluded_chips": 3,
+            "mean_chip_iou": 0.5241937851018308,
+            "total_iou": 0.7664345046389691,
+            "tp": 1884047,
+            "fp": 220592,
+            "fn": 353558,
+            "tn": 17836528
+          },
+          "PW": {
+            "evaluated_chips": 56,
+            "excluded_chips": 33,
+            "mean_chip_iou": 0.5861441236018408,
+            "total_iou": 0.7863738314590194,
+            "tp": 603387,
+            "fp": 156248,
+            "fn": 7668,
+            "tn": 11306788
+          },
+          "FW": {
+            "evaluated_chips": 86,
+            "excluded_chips": 3,
+            "mean_chip_iou": 0.4635190780426891,
+            "total_iou": 0.6933197339457389,
+            "tp": 1280660,
+            "fp": 220592,
+            "fn": 345890,
+            "tn": 17836528
+          }
+        }
+      },
+      "num_samples": 89,
+      "evaluated_samples": 86,
+      "excluded_all_ignore_samples": 3
+    }
+  },
+  "evaluation_of_best_checkpoint": {}
+}
