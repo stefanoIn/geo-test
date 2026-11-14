@@ -277,3 +277,34 @@ Traceback (most recent call last):
     joint_encodings = self.cross_encoder(x=SAR_encodings, context=optical_encodings, relative_position_bias=self.attn_bias.to(optical_images.device))  # (bsz, num_patches, encoder_dim)
                                                                                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 KeyboardInterrupt
+Resuming runs\sen1floods11\croma\linear_tuning\s1s2\lr0.0003_e50_warmup5\20261113_120840_f348aa82\checkpoints\last.pt at epoch 37.
+RNG state was not saved: crop/shuffle streams restart from the seed; this is not an exact replay of uninterrupted training.
+[Build] preprocessing
+Loading cached statistics for sar: data\statistics\sen1floods11\57be4dc440bf\sar_0321578226838c8d.json
+Loading cached statistics for optical: data\statistics\sen1floods11\57be4dc440bf\optical_b2316b09fcd43301.json
+[Build] datasets and DataLoaders
+Training chips: 251 retained; 1 entirely ignored excluded. Crops require at least one valid pixel (water-free crops retained).
+[Build] model
+Initializing SAR encoder
+Initializing optical encoder
+Initializing joint SAR-optical encoder
+[Build] loss
+[Build] optimizer
+[Build] scheduler
+Restored optimizer LR: 6.6121064e-05
+Device: cuda | Run: runs\sen1floods11\croma\linear_tuning\s1s2\lr0.0003_e50_warmup5\20261113_120840_f348aa82 | Validate every 1 epochs
+Crop debug log (epochs 1-50): runs\sen1floods11\croma\linear_tuning\s1s2\lr0.0003_e50_warmup5\20261113_120840_f348aa82\debug\training_crops.jsonl
+Epoch 037/50 | LR 6.61e-05 | Train loss 0.0871 | Val loss 0.0858 | mIoU 0.8377 | non_water IoU 0.9631 | water IoU 0.7123
+Epoch 038/50 | LR 5.77e-05 | Train loss 0.0810 | Val loss 0.0861 | mIoU 0.8354 | non_water IoU 0.9627 | water IoU 0.7080
+Epoch 039/50 | LR 4.96e-05 | Train loss 0.0852 | Val loss 0.0865 | mIoU 0.8335 | non_water IoU 0.9624 | water IoU 0.7046
+Epoch 040/50 | LR 4.21e-05 | Train loss 0.0812 | Val loss 0.0866 | mIoU 0.8331 | non_water IoU 0.9623 | water IoU 0.7038
+Epoch 041/50 | LR 3.51e-05 | Train loss 0.0775 | Val loss 0.0862 | mIoU 0.8348 | non_water IoU 0.9626 | water IoU 0.7070
+Epoch 042/50 | LR 2.86e-05 | Train loss 0.1004 | Val loss 0.0859 | mIoU 0.8365 | non_water IoU 0.9628 | water IoU 0.7101
+Epoch 043/50 | LR 2.28e-05 | Train loss 0.0851 | Val loss 0.0858 | mIoU 0.8366 | non_water IoU 0.9629 | water IoU 0.7103
+Epoch 044/50 | LR 1.76e-05 | Train loss 0.0818 | Val loss 0.0856 | mIoU 0.8374 | non_water IoU 0.9630 | water IoU 0.7118
+Epoch 045/50 | LR 1.30e-05 | Train loss 0.0833 | Val loss 0.0855 | mIoU 0.8377 | non_water IoU 0.9631 | water IoU 0.7123
+Epoch 046/50 | LR 9.05e-06 | Train loss 0.0745 | Val loss 0.0856 | mIoU 0.8372 | non_water IoU 0.9630 | water IoU 0.7114
+Epoch 047/50 | LR 5.81e-06 | Train loss 0.0797 | Val loss 0.0857 | mIoU 0.8370 | non_water IoU 0.9629 | water IoU 0.7110
+Epoch 048/50 | LR 3.28e-06 | Train loss 0.0879 | Val loss 0.0857 | mIoU 0.8370 | non_water IoU 0.9629 | water IoU 0.7111
+Epoch 049/50 | LR 1.46e-06 | Train loss 0.0813 | Val loss 0.0856 | mIoU 0.8370 | non_water IoU 0.9629 | water IoU 0.7112
+Epoch 050/50 | LR 3.65e-07 | Train loss 0.0869 | Val loss 0.0856 | mIoU 0.8370 | non_water IoU 0.9629 | water IoU 0.7111
