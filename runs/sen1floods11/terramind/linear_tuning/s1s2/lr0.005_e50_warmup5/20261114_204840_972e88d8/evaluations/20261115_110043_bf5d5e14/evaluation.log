@@ -1,0 +1,97 @@
+Evaluation only | Source: runs\sen1floods11\terramind\linear_tuning\s1s2\lr0.005_e50_warmup5\20261114_204840_972e88d8 | Output: runs\sen1floods11\terramind\linear_tuning\s1s2\lr0.005_e50_warmup5\20261114_204840_972e88d8\evaluations\20261115_110043_bf5d5e14 | Device: cuda
+experiment:
+  name: terramind_s1s2_linear_cosine_lr0.005_e50_warmup5
+  seed: 42
+dataset:
+  name: sen1floods11
+  modalities:
+  - sar
+  - optical
+  train_csv: data/sen1floods11/splits/all_hand_labels/flood_train_data.csv
+  val_csv: data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv
+  test_csv: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv
+  bolivia_csv: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv
+model:
+  name: terramind_v1_large
+  size: large
+  checkpoint: pretrained_models/TerraMind_v1_large.pt
+  modalities:
+  - S1GRD
+  - S2L1C
+  input_mapping:
+    sar: S1GRD
+    optical: S2L1C
+  merge_method: mean
+  freeze_encoder: true
+adapter:
+  name: token_to_spatial
+  feature_key: tokens
+  grid_size: null
+head:
+  name: linear_segmentation
+  in_channels: 1024
+  num_classes: 2
+preprocessing:
+  normalization:
+    method: zscore
+    statistics: pretraining_fixed
+    use_8_bit: false
+  band_indices:
+    sar:
+    - 0
+    - 1
+    optical:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+  crop_size: 128
+training:
+  epochs: 50
+  batch_size: 8
+  num_workers: 0
+  validate_every: 1
+  loss:
+    name: cross_entropy
+    ignore_index: 255
+    class_weights: null
+  optimizer:
+    name: adamw
+    learning_rate: 0.005
+    weight_decay: 0.01
+  scheduler:
+    name: cosine_annealing
+    warmup_epochs: 5
+    warmup_start_factor: 0.1
+    eta_min: 0.0
+evaluation:
+  aw_pw_fw: true
+  batch_size: 1
+  tile_size: 128
+  stride: 85
+  tile_batch_size: 8
+  class_names:
+  - non_water
+  - water
+  return_per_sample: true
+  sample_id_key: chip_id
+  checkpoint_metric: miou
+  save_predictions: false
+output:
+  directory: runs/sen1floods11/terramind/linear_tuning/s1s2/lr0.005_e50_warmup5
+D:\UNI\THESIS\.venv\Lib\site-packages\torch\jit\_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+W1115 11:01:06.590000 11584 Lib\site-packages\torch\utils\flop_counter.py:113] triton not found; flop counting will not work for triton kernels
+Evaluating test: 90 chips | selected epoch 21
+test: mIoU 0.8478 | non_water IoU 0.9586 | water IoU 0.7369
+Evaluating bolivia: 15 chips | selected epoch 21
+bolivia: mIoU 0.8500 | non_water IoU 0.9481 | water IoU 0.7519

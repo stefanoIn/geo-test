@@ -34,6 +34,12 @@ CONFIG_PATH = Path("")
 def run_experiment(config_path=CONFIG_PATH, device=None):
     """Train a fresh model, evaluate its best checkpoint, and return its run folder."""
 
+    # Evaluation YAMLs reuse the saved run; never enter the training setup.
+    with Path(config_path).open(encoding="utf-8") as stream:
+        request = yaml.safe_load(stream)
+    if isinstance(request, dict) and request.get("mode") == "evaluation":
+        return run_evaluation_config(request, device=device)
+
     # Validate YAML before loading data or allocating model memory.
     try:
         config = load_config(config_path, show_config=False)
@@ -342,7 +348,25 @@ def _run_experiment(config, run_dir, device, resume=None):
     return run_dir
 
 
-def run_evaluation(run_dir, device=None, splits=None, save_predictions=None):
+def run_evaluation_config(request, device=None):
+    """Evaluate an explicit saved run using held-out split paths from YAML."""
+    allowed = {"mode", "source_run", "splits", "save_predictions"}
+    if set(request) - allowed:
+        raise ValueError(f"Unknown evaluation YAML fields: {set(request) - allowed}")
+    source = request.get("source_run")
+    if not isinstance(source, str) or not source.strip():
+        raise ValueError("Evaluation YAML requires source_run")
+    split_csvs = request.get("splits")
+    if not isinstance(split_csvs, dict) or not split_csvs:
+        raise ValueError("Evaluation YAML requires a splits mapping")
+    save_predictions = request.get("save_predictions", False)
+    if not isinstance(save_predictions, bool):
+        raise ValueError("save_predictions must be true or false")
+    return run_evaluation(source, device=device, splits=list(split_csvs),
+                          save_predictions=save_predictions, split_csvs=split_csvs)
+
+
+def run_evaluation(run_dir, device=None, splits=None, save_predictions=None, split_csvs=None):
     """Evaluate a saved best checkpoint without training or recomputing stats.
 
     Results go into a new evaluations/<id> folder inside the original run.
@@ -358,6 +382,18 @@ def run_evaluation(run_dir, device=None, splits=None, save_predictions=None):
             raise FileNotFoundError(path)
 
     config = yaml.safe_load((run_dir / "config.yaml").read_text(encoding="utf-8"))
+    # Add held-out paths in memory; preserve the original training config.
+    if split_csvs is not None:
+        if not isinstance(split_csvs, dict) or not split_csvs:
+            raise ValueError("split_csvs must be a nonempty mapping")
+        for split, csv_path in split_csvs.items():
+            if split not in {"test", "bolivia"}:
+                raise ValueError(f"Unsupported held-out split: {split!r}")
+            if not isinstance(csv_path, str) or not csv_path.strip():
+                raise ValueError(f"Invalid CSV path for {split}")
+            if not Path(csv_path).is_file():
+                raise FileNotFoundError(csv_path)
+            config["dataset"][f"{split}_csv"] = csv_path
     options = config["evaluation"]
     if save_predictions is not None:
         options["save_predictions"] = save_predictions

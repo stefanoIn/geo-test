@@ -1,0 +1,7 @@
+# Evaluate the validation-selected best.pt; no training or statistics recomputation.
+mode: evaluation
+source_run: runs/sen1floods11/terramind/linear_tuning/s1s2/lr0.005_e50_warmup5/20261114_204840_972e88d8
+splits:
+  test: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv
+  bolivia: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv
+save_predictions: false

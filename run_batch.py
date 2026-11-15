@@ -2,12 +2,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Each YAML defines the full experiment. Re-running a trial creates a new run folder.
+# YAML mode selects training or evaluation; these entries evaluate existing best checkpoints.
 CONFIGS = [
-    "configs/resnet_unet/resnet18_tuning/s1s2_lr0.0001.yaml",
-    "configs/resnet_unet/resnet18_tuning/s1s2_lr0.0003.yaml",
-    "configs/resnet_unet/resnet18_tuning/s1s2_lr0.001.yaml",
-    "configs/resnet_unet/resnet18_tuning/s1s2_lr0.003.yaml",
+    "configs/evaluation/croma_s1s2_linear_lr0.003.yaml",
+    "configs/evaluation/terramind_s1s2_linear_lr0.005.yaml",
+    "configs/evaluation/unet_s1s2_lr0.0003.yaml",
+    "configs/evaluation/resnet18_unet_s1s2_lr0.001.yaml",
 ]
 
 if __name__ == "__main__":
