@@ -1,0 +1,63 @@
+{
+  "inputs": {
+    "sar": {
+      "shape": [
+        8,
+        2,
+        128,
+        128
+      ],
+      "dtype": "torch.float32",
+      "device": "cuda:0",
+      "all_finite": true,
+      "min": -7.087037563323975,
+      "max": 4.981297016143799
+    },
+    "optical": {
+      "shape": [
+        8,
+        13,
+        128,
+        128
+      ],
+      "dtype": "torch.float32",
+      "device": "cuda:0",
+      "all_finite": true,
+      "min": -1.7896989583969116,
+      "max": 2.814439058303833
+    }
+  },
+  "target": {
+    "shape": [
+      8,
+      128,
+      128
+    ],
+    "dtype": "torch.int64",
+    "valid_pixels": 119573,
+    "ignored_pixels": 11499,
+    "valid_label_counts": {
+      "0": 82177,
+      "1": 37396
+    }
+  },
+  "logits": {
+    "shape": [
+      8,
+      2,
+      128,
+      128
+    ],
+    "dtype": "torch.float32",
+    "device": "cuda:0",
+    "all_finite": true,
+    "min": -1.2307769060134888,
+    "max": 0.8635725975036621
+  },
+  "sanity_checks": {
+    "finite_inputs": true,
+    "finite_logits": true,
+    "output_matches_target": true,
+    "valid_label_range": true
+  }
+}
