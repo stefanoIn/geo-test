@@ -1,6 +1,6 @@
 """Standalone geographical exposure audit (no model inference).
 
-From GeoTest: python experiments/geographical_exposure.py --chip Ghana_313799
+From GeoTest: python experiments/geographical_exposure/geographical_exposure.py --chip Ghana_313799
 Omit --chip to analyse all split members; --map-chip chooses the one local map.
 Run --self-test for small synthetic checks. Paths are relative to the current directory.
 
@@ -387,6 +387,173 @@ def self_test():
     print("Passed: intersection/union, distance, touching, repeated sites, global nearest vs brute force, and batch invariance")
 
 
+def world_map(downstream, ssl4eo, terramesh, output):
+    """Actual sample centres at every zoom, with online terrain/imagery basemaps.
+
+    Read only centre/source columns. Coincident acquisitions overlap visually.
+    Embedded Natural Earth outlines remain available as an offline fallback.
+    """
+    from shapely.geometry import mapping
+    import base64
+    import gzip
+    coordinates = {source: [] for source in COLORS}
+    def accumulate(source, lon, lat):
+        xy = np.column_stack([lon, lat])
+        if not np.isfinite(xy).all() or (np.abs(xy[:,0]) > 180).any() or (np.abs(xy[:,1]) > 90).any():
+            raise ValueError("Invalid world-map coordinates")
+        coordinates[source].append(xy)
+
+    for frame in load_metadata("ssl4eo", ssl4eo):
+        accumulate("croma_ssl4eo", frame.center_lon.to_numpy(), frame.center_lat.to_numpy())
+    parquet = pq.ParquetFile(terramesh)
+    for batch in parquet.iter_batches(batch_size=131072, columns=["tar","split","center_lon","center_lat"]):
+        frame = batch.to_pandas()
+        if not frame.split.eq("train").all():
+            raise ValueError("World map requires TerraMesh training metadata")
+        matched = np.zeros(len(frame), dtype=bool)
+        for prefix, source in [("ssl4eos12","terramind_ssl4eo"),("majortom","terramind_majortom")]:
+            mask = frame.tar.str.startswith(prefix).to_numpy()
+            matched |= mask
+            accumulate(source, frame.loc[mask,"center_lon"].to_numpy(), frame.loc[mask,"center_lat"].to_numpy())
+        if not matched.all():
+            raise ValueError("Unknown TerraMesh source")
+    features = [dict(type="Feature", geometry=mapping(row.geometry), properties=dict(
+        chip_id=row.sample_id, split=row.split, lon=row.center_lon, lat=row.center_lat))
+        for row in downstream.itertuples()]
+    layers = {source: dict(label=LABELS[source], color=COLORS[source],
+                          total=sum(len(xy) for xy in coordinates[source])) for source in COLORS}
+    # Lossless float64 coordinates, sorted by latitude for viewport lookup.
+    # Compress columns separately in one buffer; decode only when the source is first enabled.
+    for source in layers:
+        xy = np.concatenate(coordinates.pop(source))
+        xy = xy[np.argsort(xy[:, 1], kind="stable")]
+        raw = np.ascontiguousarray(xy.T, dtype="<f8").tobytes()
+        # Byte shuffle preserves every float64 bit while improving compression.
+        shuffled = np.frombuffer(raw, dtype=np.uint8).reshape(-1, 8).T.copy().tobytes()
+        packed = gzip.compress(shuffled, compresslevel=6, mtime=0)
+        assert len(xy) == layers[source]["total"]
+        restored = np.frombuffer(gzip.decompress(packed), dtype=np.uint8).reshape(8, -1).T.copy().tobytes()
+        assert restored == raw
+        layers[source]["coordinates_gzip"] = base64.b64encode(packed).decode("ascii")
+        print(f"Packed {source}: {len(xy):,} exact centres ({len(packed)/1e6:.1f} MB)", flush=True)
+        del xy, raw, packed, shuffled, restored
+    payload = json.dumps(dict(chips=features, layers=layers), separators=(",",":"),
+                         ensure_ascii=False).replace("</", "<\\/")
+    html = '''<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GeoTest · geographical inventories</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>body{margin:0;font:14px system-ui;color:#192632}header{padding:14px 22px;border-bottom:1px solid #ddd}
+h1{font-size:20px;margin:0 0 5px}p{margin:4px 0}#map{height:calc(100vh - 155px);min-height:400px}
+.note{font-size:12px;color:#4d5963}button,select{padding:5px;margin:4px;border:1px solid #aaa;background:white;border-radius:4px}
+.leaflet-control-layers{max-height:70vh;overflow:auto}footer{padding:8px 22px;font-size:12px}</style></head>
+<body><header><h1>Geographical inventories</h1><p id="description"></p>
+<span class="note">Actual sample centres at every zoom; no spatial aggregation or sampling.
+Repeated acquisitions at identical coordinates overlap. Centres are not footprint coverage.</span><br>
+<button onclick="map.setView([15,0],2)">World view</button><label>Find chip <select id="chips"><option value="">Select…</option></select></label>
+<span id="status" class="note">Loading map…</span></header><div id="map"></div>
+<footer>Colours: blue — CROMA / SSL4EO original; green — TerraMind / SSL4EO v1.1; orange — TerraMind / MajorTOM.
+Black outlines — downstream chips. Catalogue exposure does not establish label leakage. Topographic and satellite basemaps require internet. Offline outlines are available in the layer control.</footer>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script id="inventory" type="application/json">__DATA__</script>
+<script>
+const data=JSON.parse(document.getElementById('inventory').textContent);
+document.getElementById('description').textContent=`${data.chips.length} Sen1Floods11 chips · toggle inventories and splits using the layer control at top right`;
+if(typeof L==='undefined'){document.getElementById('status').textContent='Embedded map library unavailable; regenerate the HTML.';throw Error('Leaflet unavailable');}
+const map=L.map('map',{preferCanvas:true,minZoom:2}).setView([15,0],2);
+map.createPane('basemap');map.getPane('basemap').style.zIndex=200;
+const offline=L.geoJSON(__BASEMAP__,{pane:'basemap',interactive:false,style:{color:'#aeb8bc',weight:.6,fillColor:'#eef0eb',fillOpacity:1},attribution:'Natural Earth - public domain - 1:110m'});
+map.getContainer().style.background='#e6eff4';
+const tileRoot='https://server.arcgisonline.com/ArcGIS/rest/services/';
+const tiles=(service,attribution)=>L.tileLayer(tileRoot+service+'/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution});
+const topo=tiles('World_Topo_Map','Tiles &copy; Esri - Esri, HERE, Garmin, USGS and the GIS User Community');
+const imagery=tiles('World_Imagery','Imagery &copy; Esri - Maxar, Earthstar Geographics and the GIS User Community');
+const labels=tiles('Reference/World_Boundaries_and_Places','Labels &copy; Esri, HERE, Garmin');
+const satellite=L.layerGroup([imagery,labels]);
+const baseLayers={'Topographic - places and terrain':topo,'Satellite - imagery and labels':satellite,'Offline - country outlines only':offline};
+topo.addTo(map);
+for(const layer of [topo,imagery,labels])layer.on('tileerror',()=>{
+ document.getElementById('status').textContent='Basemap tile unavailable: check your connection or choose another basemap at top right.';
+});
+
+map.createPane('downstream');map.getPane('downstream').style.zIndex=450;
+const overlays={};const chipLayers={};
+const safe=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+for(const [key,source] of Object.entries(data.layers)){
+ const ExactLayer=L.Layer.extend({
+  onAdd:function(m){this.m=m;this.c=L.DomUtil.create('canvas','leaflet-layer leaflet-zoom-hide');this.c.style.pointerEvents='none';
+   m.getPanes().overlayPane.appendChild(this.c);m.on('moveend zoomend resize',this.draw,this);this.draw();},
+  onRemove:function(m){m.off('moveend zoomend resize',this.draw,this);this.c.remove();this.m=null;},
+  load:function(){if(this.pending)return this.pending;
+   this.pending=(async()=>{const binary=atob(source.coordinates_gzip);const bytes=new Uint8Array(binary.length);
+    for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+    const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+    const buffer=await new Response(stream).arrayBuffer(), shuffled=new Uint8Array(buffer);
+    const length=source.total*2, raw=new Uint8Array(buffer.byteLength);
+    for(let byte=0;byte<8;byte++)for(let i=0;i<length;i++)raw[i*8+byte]=shuffled[byte*length+i];
+    this.points=new Float64Array(raw.buffer);
+    if(this.points.length!==source.total*2)throw Error('Coordinate count mismatch');
+    source.coordinates_gzip=null;})();return this.pending;},
+  draw:async function(){const m=this.m;if(!m)return;
+   if(!this.points){document.getElementById('status').textContent='Decoding actual coordinates (first activation only)…';
+    try{await this.load();}catch(e){document.getElementById('status').textContent='Could not decode centres: '+e.message;return;}}
+   if(this.m!==m)return;
+   const size=m.getSize(), origin=m.containerPointToLayerPoint([0,0]);L.DomUtil.setPosition(this.c,origin);
+   this.c.width=size.x;this.c.height=size.y;const ctx=this.c.getContext('2d');ctx.fillStyle=source.color;
+   const p=this.points,n=source.total,b=m.getBounds();
+   const lower=value=>{let lo=0,hi=n;while(lo<hi){const mid=(lo+hi)>>>1;if(p[n+mid]<value)lo=mid+1;else hi=mid;}return lo;};
+   const start=lower(b.getSouth()),stop=lower(b.getNorth()+1e-10),scale=256*Math.pow(2,m.getZoom());
+   const top=m.project(m.containerPointToLatLng([0,0]),m.getZoom());let drawn=0;
+   // Larger, outlined centre markers at regional/local zoom; compact at world scale.
+   const radius=m.getZoom()>=9?4:m.getZoom()>=6?3:1;
+   const marker=document.createElement('canvas'),side=2*radius+4;
+   marker.width=marker.height=side;const brush=marker.getContext('2d');
+   brush.beginPath();brush.arc(side/2,side/2,radius,0,2*Math.PI);
+   brush.fillStyle=source.color;brush.fill();brush.strokeStyle='#ffffff';brush.lineWidth=1.5;brush.stroke();
+   for(let i=start;i<stop;i++){const lon=p[i],lat=p[n+i];if(lon<b.getWest()||lon>b.getEast())continue;
+    const sin=Math.sin(Math.max(-85.05112878,Math.min(85.05112878,lat))*Math.PI/180);
+    const x=(lon/360+.5)*scale-top.x,y=(.5-Math.log((1+sin)/(1-sin))/(4*Math.PI))*scale-top.y;
+    if(m.getZoom()<6)ctx.fillRect(x-1,y-1,2,2);
+    else ctx.drawImage(marker,x-side/2,y-side/2);drawn++;}
+   document.getElementById('status').textContent='Actual centres · '+source.label+': '+drawn.toLocaleString()+' records in view (coincident centres overlap)';
+  }
+ });
+ overlays[`<span style="color:${source.color}">●</span> ${safe(source.label)} (${source.total.toLocaleString()} records)`]=new ExactLayer();
+}
+for(const split of ['train','validation','test','bolivia']){
+ const chips=data.chips.filter(f=>f.properties.split===split);if(!chips.length)continue;
+ const group=L.layerGroup().addTo(map);chipLayers[split]=group;
+ overlays[`Sen1Floods11 — ${safe(split)} (${chips.length})`]=group;
+ for(const feature of chips){const p=feature.properties;const popup=`<b>${safe(p.chip_id)}</b><br>Split: ${safe(p.split)}<br>Centre: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}`;
+ L.geoJSON(feature,{pane:'downstream',style:{color:'#111',weight:2,fillOpacity:.04}}).bindPopup(popup).addTo(group);
+ L.circleMarker([p.lat,p.lon],{pane:'downstream',radius:4,color:'#111',weight:1.5,fillColor:'#fff',fillOpacity:.9}).bindPopup(popup).addTo(group);}
+}
+// Support custom downstream split names too.
+for(const split of [...new Set(data.chips.map(f=>f.properties.split))].filter(s=>!chipLayers[s])){
+ const group=L.geoJSON(data.chips.filter(f=>f.properties.split===split),{pane:'downstream',style:{color:'#111',weight:2},
+ onEachFeature:(f,l)=>l.bindPopup(safe(f.properties.chip_id))}).addTo(map);chipLayers[split]=group;overlays[`Sen1Floods11 — ${safe(split)}`]=group;
+}
+L.control.layers(baseLayers,overlays,{collapsed:false}).addTo(map);L.control.scale().addTo(map);
+const select=document.getElementById('chips');
+data.chips.sort((a,b)=>a.properties.chip_id.localeCompare(b.properties.chip_id)).forEach((f,i)=>{const o=document.createElement('option');o.value=i;o.textContent=f.properties.chip_id;select.appendChild(o);});
+select.onchange=()=>{if(select.value==='')return;const f=data.chips[Number(select.value)];chipLayers[f.properties.split].addTo(map);map.fitBounds(L.geoJSON(f).getBounds(),{padding:[50,50],maxZoom:13});};
+document.getElementById('status').textContent='Ready · pretraining layers initially hidden; toggle them on at top right';
+</script></body></html>'''
+    output.mkdir(parents=True, exist_ok=True)
+    path = output/"world_inventory_map.html"
+    assets = Path(__file__).resolve().parent / "assets"
+    world = json.loads((assets / "world_countries.geojson").read_text(encoding="utf-8"))
+    leaflet_js = (assets / "leaflet.js").read_text(encoding="utf-8")
+    leaflet_css = (assets / "leaflet.css").read_text(encoding="utf-8")
+    html = html.replace('<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">',
+                        "<style>" + leaflet_css + "</style>")
+    html = html.replace('<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>',
+                        "<script>" + leaflet_js + "</script>")
+    html = html.replace("__BASEMAP__", json.dumps(world, separators=(",", ":")))
+    path.write_text(html.replace("__DATA__",payload),encoding="utf-8")
+    print(f"Saved {path} ({path.stat().st_size/1e6:.2f} MB); {len(features)} chips; "
+          + str({s:v['total'] for s,v in layers.items()}))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--catalog", type=Path, default=Path("data/sen1floods11/catalog/sen1floods11_hand_labeled_label/collection.json"))
@@ -402,6 +569,7 @@ def main():
     parser.add_argument("--radii", type=float, nargs="+", default=[5,10,25,50,100])
     parser.add_argument("--batch-size", type=int, default=65536)
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--world-map-only", action="store_true", help="All downstream chips and toggleable actual pretraining centres; skip overlap analysis")
     args = parser.parse_args()
     if args.self_test:
         self_test()
@@ -413,6 +581,11 @@ def main():
         k: args.splits_dir/f"flood_{v}_data.csv" for k,v in
         [("train","train"),("validation","valid"),("test","test"),("bolivia","bolivia")]}
     downstream, checks = load_downstream(args.catalog, splits, args.raster_dir)
+    if args.world_map_only:
+        if args.chip:
+            parser.error("--world-map-only displays all split chips; omit --chip")
+        world_map(downstream, args.ssl4eo, args.terramesh, args.output)
+        return
     split_counts = downstream.groupby("split").size().to_dict()
     if args.chip:
         if set(args.chip)-set(downstream.sample_id):
