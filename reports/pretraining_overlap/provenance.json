@@ -1,0 +1,88 @@
+{
+  "inputs": {
+    "data\\sen1floods11\\catalog\\sen1floods11_hand_labeled_label\\collection.json": {
+      "bytes": 210901,
+      "mtime_ns": 1602776679000000000
+    },
+    "pretrained_models\\pretraining_locations\\SSL4EO-S12\\ssl4eo-s12_center_coords.csv": {
+      "bytes": 8018714,
+      "mtime_ns": 1794934568400086900
+    },
+    "pretrained_models\\pretraining_locations\\TerraMesh\\train_metadata.parquet": {
+      "bytes": 1890824947,
+      "mtime_ns": 1794935624521544600
+    }
+  },
+  "splits": {
+    "train": "data\\sen1floods11\\splits\\all_hand_labels\\flood_train_data.csv",
+    "validation": "data\\sen1floods11\\splits\\all_hand_labels\\flood_valid_data.csv",
+    "test": "data\\sen1floods11\\splits\\all_hand_labels\\flood_test_data.csv",
+    "bolivia": "data\\sen1floods11\\splits\\all_hand_labels\\flood_bolivia_data.csv"
+  },
+  "split_counts": {
+    "bolivia": 15,
+    "test": 90,
+    "train": 252,
+    "validation": 89
+  },
+  "raster_checks": [
+    {
+      "chip": "Bolivia_60373",
+      "split": "bolivia",
+      "relative_area_difference": 0.0
+    },
+    {
+      "chip": "Mekong_382276",
+      "split": "test",
+      "relative_area_difference": 0.0
+    },
+    {
+      "chip": "Sri-Lanka_92824",
+      "split": "train",
+      "relative_area_difference": 0.0
+    },
+    {
+      "chip": "Paraguay_7894",
+      "split": "validation",
+      "relative_area_difference": 0.0
+    }
+  ],
+  "inventory_records": {
+    "croma_ssl4eo": 251079,
+    "terramind_majortom": 7971665,
+    "terramind_ssl4eo": 958176
+  },
+  "seconds": 318.0093093000014,
+  "arguments": {
+    "catalog": "data\\sen1floods11\\catalog\\sen1floods11_hand_labeled_label\\collection.json",
+    "splits_dir": "data\\sen1floods11\\splits\\all_hand_labels",
+    "split": [],
+    "raster_dir": "data\\sen1floods11\\HandLabeled\\LabelHand",
+    "ssl4eo": "pretrained_models\\pretraining_locations\\SSL4EO-S12\\ssl4eo-s12_center_coords.csv",
+    "terramesh": "pretrained_models\\pretraining_locations\\TerraMesh\\train_metadata.parquet",
+    "output": "reports\\pretraining_overlap",
+    "chip": null,
+    "map_chip": "Ghana_313799",
+    "view_km": 100.0,
+    "radii": [
+      5,
+      10,
+      25,
+      50,
+      100
+    ],
+    "batch_size": 65536,
+    "self_test": false
+  },
+  "distance_method": "WGS84 chip-centred AEQD, edges densified to 0.001 degrees; global branch-and-bound candidates; metric distances, not exact ellipsoidal minima",
+  "nearby_method": "Haversine centre distance, mean Earth radius 6371008.8 m; unique sites = exact coordinate pairs",
+  "overlap": "Positive area; coverage uses union; TerraMind total unions both sources",
+  "limitations": [
+    "SSL4EO reconstructed footprints are approximate; candidate source raster verification not performed",
+    "TerraMesh current metadata revision is not verified against historical checkpoint pretraining",
+    "No acquisition-product matching to downstream imagery has been performed",
+    "UTM bounds required for TerraMesh; antimeridian candidates rejected explicitly",
+    "Source metadata bounds assumed to enclose supplied footprints; selected candidates checked",
+    "Exposure is not evidence of supervised label leakage"
+  ]
+}
