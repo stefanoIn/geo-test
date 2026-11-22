@@ -1,0 +1,220 @@
+Configuration: configs\croma\fcn\croma_s1s2_fcn_all_hand_labels.yaml | Run: runs\sen1floods11\croma\fcn_s1s2\20261122_164911_57910f1a
+experiment:
+  name: croma_s1s2_fcn_all_hand_labels
+  seed: 42
+dataset:
+  name: sen1floods11
+  modalities:
+  - sar
+  - optical
+  train_csv: data/sen1floods11/splits/all_hand_labels/flood_train_data.csv
+  val_csv: data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv
+  test_csv: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv
+  bolivia_csv: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv
+model:
+  name: croma
+  size: large
+  checkpoint: pretrained_models/CROMA_large.pt
+  modality: both
+  image_resolution: 120
+  freeze_encoder: true
+adapter:
+  name: token_to_spatial
+  feature_key: tokens
+  grid_size: null
+head:
+  name: fcn
+  in_channels: 1024
+  num_classes: 2
+preprocessing:
+  normalization:
+    method: two_sigma_stretch
+    statistics: training_dataset
+    use_8_bit: false
+  band_indices:
+    sar:
+    - 0
+    - 1
+    optical:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 11
+    - 12
+  crop_size: 120
+training:
+  epochs: 10
+  batch_size: 8
+  num_workers: 0
+  validate_every: 5
+  loss:
+    name: cross_entropy
+    ignore_index: 255
+    class_weights:
+    - 1.0
+    - 8.0
+  optimizer:
+    name: adamw
+    learning_rate: 0.003
+    weight_decay: 0.01
+  scheduler:
+    name: cosine_annealing
+    eta_min: 0.0
+evaluation:
+  aw_pw_fw: true
+  batch_size: 1
+  tile_size: 120
+  stride: 60
+  tile_batch_size: 1
+  class_names:
+  - non_water
+  - water
+  return_per_sample: true
+  sample_id_key: chip_id
+  checkpoint_metric: iou
+  checkpoint_class: 1
+output:
+  directory: runs/sen1floods11/croma/fcn_s1s2
+Configuration checks passed.
+[Build] preprocessing
+Loading cached statistics for sar: data\statistics\sen1floods11\57be4dc440bf\sar_0321578226838c8d.json
+Loading cached statistics for optical: data\statistics\sen1floods11\57be4dc440bf\optical_b2316b09fcd43301.json
+[Build] datasets and DataLoaders
+Training chips: 251 retained; 1 entirely ignored excluded. Crops require at least one valid pixel (water-free crops retained).
+[Build] model
+Initializing SAR encoder
+Initializing optical encoder
+Initializing joint SAR-optical encoder
+[Build] loss
+[Build] optimizer
+[Build] scheduler
+
+Experiment setup (verified runtime objects)
+Experiment: croma_s1s2_fcn_all_hand_labels
+Model: croma | Class: DensePredictionModel
+Initialization: pretrained
+Model parameters: 674,917,378 total, 2,360,322 trainable
+Pretrained checkpoint: pretrained_models/CROMA_large.pt
+Native input: both
+Input mapping: None
+Configured modalities: ['sar', 'optical']
+Device: cuda | GPU: NVIDIA GeForce RTX 3070
+Seed: 42 | Streams: {'model': 42, 'shuffle': 43, 'crops': 44, 'train_loader': 45, 'val_loader': 46, 'test_loader': 47, 'bolivia_loader': 48}
+Normalization: two_sigma_stretch | Bands: {'sar': [0, 1], 'optical': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12]}
+Component encoder: src.encoders.croma.croma.CROMAEncoder | 672,557,056 total, 0 trainable
+Component adapter: src.adapters.token_to_spatial.TokenToSpatial | 0 total, 0 trainable
+Component head: src.heads.fcn.FCNHead | 2,360,322 total, 2,360,322 trainable
+Head structure: FCNHead(
+  (head): FCNHead(
+    (0): Conv2d(1024, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+    (1): GroupNorm(16, 256, eps=1e-05, affine=True, bias=True)
+    (2): ReLU()
+    (3): Dropout(p=0.1, inplace=False)
+    (4): Conv2d(256, 2, kernel_size=(1, 1), stride=(1, 1))
+  )
+)
+Data [train]: data/sen1floods11/splits/all_hand_labels/flood_train_data.csv | 251 samples | inputs=['sar', 'optical'] | batch=8 | workers=0 | crop=120
+Data [val]: data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv | 89 samples | inputs=['sar', 'optical'] | batch=1 | workers=0 | crop=None
+Data [test]: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv | 90 samples | inputs=['sar', 'optical'] | batch=1 | workers=0 | crop=None
+Data [bolivia]: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv | 15 samples | inputs=['sar', 'optical'] | batch=1 | workers=0 | crop=None
+Loss: CrossEntropyLoss | reduction=mean | weights=[1.0, 8.0] | ignore_index=255
+Optimizer [0]: AdamW | LR=0.003 | weight_decay=0.01 | betas=(0.9, 0.999)
+Scheduler: {'class': 'torch.optim.lr_scheduler.CosineAnnealingLR', 'state': {'T_max': 320, 'eta_min': 0.0, 'base_lrs': [0.003], 'last_epoch': 0, '_step_count': 1, '_is_initial': False, '_get_lr_called_within_step': False, '_last_lr': [0.003]}, 'T_max': 320, 'eta_min': 0.0, 'last_epoch': 0}
+Epochs: 10 | Validate every: 5
+Evaluation: tile=120 | stride=60 | tile_batch=1
+Checkpoint selection: validation iou
+Sanity checks: {'optimizer_matches_trainable_parameters': True, 'has_trainable_parameters': True, 'requested_frozen_encoder_is_frozen': True}
+Output: runs\sen1floods11\croma\fcn_s1s2\20261122_164911_57910f1a
+
+Device: cuda | Run: runs\sen1floods11\croma\fcn_s1s2\20261122_164911_57910f1a | Validate every 5 epochs
+Crop debug log (epochs 1-10): runs\sen1floods11\croma\fcn_s1s2\20261122_164911_57910f1a\debug\training_crops.jsonl
+
+First valid training batch:
+{
+  "inputs": {
+    "sar": {
+      "shape": [
+        8,
+        2,
+        120,
+        120
+      ],
+      "dtype": "torch.float32",
+      "device": "cuda:0",
+      "all_finite": true,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "optical": {
+      "shape": [
+        8,
+        12,
+        120,
+        120
+      ],
+      "dtype": "torch.float32",
+      "device": "cuda:0",
+      "all_finite": true,
+      "min": 0.0,
+      "max": 1.0
+    }
+  },
+  "target": {
+    "shape": [
+      8,
+      120,
+      120
+    ],
+    "dtype": "torch.int64",
+    "valid_pixels": 97643,
+    "ignored_pixels": 17557,
+    "valid_label_counts": {
+      "0": 70982,
+      "1": 26661
+    }
+  },
+  "logits": {
+    "shape": [
+      8,
+      2,
+      120,
+      120
+    ],
+    "dtype": "torch.float32",
+    "device": "cuda:0",
+    "all_finite": true,
+    "min": -1.0203423500061035,
+    "max": 1.1740719079971313
+  },
+  "sanity_checks": {
+    "finite_inputs": true,
+    "finite_logits": true,
+    "output_matches_target": true,
+    "valid_label_range": true
+  }
+}
+Epoch 001/10 | LR 3.00e-03 | Train loss 0.5437
+Epoch 002/10 | LR 2.93e-03 | Train loss 0.2656
+Epoch 003/10 | LR 2.71e-03 | Train loss 0.2232
+Epoch 004/10 | LR 2.38e-03 | Train loss 0.1871
+Epoch 005/10 | LR 1.96e-03 | Train loss 0.1550 | Val loss 0.1558 | mIoU 0.7819 | non_water IoU 0.9318 | water IoU 0.6320
+Epoch 006/10 | LR 1.50e-03 | Train loss 0.1920
+Epoch 007/10 | LR 1.04e-03 | Train loss 0.1574
+Epoch 008/10 | LR 6.18e-04 | Train loss 0.1440
+Epoch 009/10 | LR 2.86e-04 | Train loss 0.1731
+Epoch 010/10 | LR 7.34e-05 | Train loss 0.1464 | Val loss 0.1430 | mIoU 0.8019 | non_water IoU 0.9406 | water IoU 0.6632
+test: mIoU 0.8040 | non_water IoU 0.9357 | water IoU 0.6724
+  AW: mean per-chip IoU=0.42262781700804763, pooled IoU=0.6723779885273161
+  PW: mean per-chip IoU=0.3171494560036712, pooled IoU=0.6058321651930128
+  FW: mean per-chip IoU=0.3517157418299373, pooled IoU=0.5616742300903735
+bolivia: mIoU 0.7935 | non_water IoU 0.9191 | water IoU 0.6680
+  AW: mean per-chip IoU=0.4602483027010508, pooled IoU=0.6679956023704621
+  PW: mean per-chip IoU=0.3151171310568412, pooled IoU=0.31819028726120935
+  FW: mean per-chip IoU=0.40550316137460535, pooled IoU=0.6521980387969514

@@ -11,9 +11,9 @@ The current experiments focus on **water segmentation with the hand-labelled Sen
 | Component | Implemented options |
 | --- | --- |
 | Dataset | Sen1Floods11 hand-labelled chips, selected through split CSVs |
-| Foundation models | CROMA Base/Large; TerraMind v1 Base/Large through TerraTorch |
+| Foundation models | CROMA Large; TerraMind v1 Large |
 | GeoFM segmentation heads | Linear segmentation (`1 ? 1` convolution) and FCN |
-| Supervised baselines | U-Net and ResNet U-Net through segmentation-models-pytorch |
+| Supervised baselines | U-Net and ResNet U-Net |
 | Inputs | Sentinel-1 SAR, Sentinel-2 optical, or paired SAR/optical |
 | Execution | Training, evaluation only, checkpoint resume and sequential batch runs |
 | Supporting analysis | Crop diagnostics, evaluation timing and geographical pretraining exposure |

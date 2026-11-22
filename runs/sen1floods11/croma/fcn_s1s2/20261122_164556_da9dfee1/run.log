@@ -1,0 +1,285 @@
+Configuration: configs\croma\fcn\croma_s1s2_fcn_all_hand_labels.yaml | Run: runs\sen1floods11\croma\fcn_s1s2\20261122_164556_da9dfee1
+experiment:
+  name: croma_s1s2_fcn_all_hand_labels
+  seed: 42
+dataset:
+  name: sen1floods11
+  modalities:
+  - sar
+  - optical
+  train_csv: data/sen1floods11/splits/all_hand_labels/flood_train_data.csv
+  val_csv: data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv
+  test_csv: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv
+  bolivia_csv: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv
+model:
+  name: croma
+  size: large
+  checkpoint: pretrained_models/CROMA_large.pt
+  modality: both
+  image_resolution: 120
+  freeze_encoder: true
+adapter:
+  name: token_to_spatial
+  feature_key: tokens
+  grid_size: null
+head:
+  name: fcn
+  in_channels: 1024
+  num_classes: 2
+preprocessing:
+  normalization:
+    method: two_sigma_stretch
+    statistics: training_dataset
+    use_8_bit: false
+  band_indices:
+    sar:
+    - 0
+    - 1
+    optical:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 11
+    - 12
+  crop_size: 120
+training:
+  epochs: 100
+  batch_size: 8
+  num_workers: 0
+  validate_every: 2
+  loss:
+    name: cross_entropy
+    ignore_index: 255
+    class_weights:
+    - 1.0
+    - 8.0
+  optimizer:
+    name: adamw
+    learning_rate: 0.003
+    weight_decay: 0.01
+  scheduler:
+    name: cosine_annealing
+    eta_min: 0.0
+evaluation:
+  aw_pw_fw: true
+  batch_size: 1
+  tile_size: 120
+  stride: 60
+  tile_batch_size: 1
+  class_names:
+  - non_water
+  - water
+  return_per_sample: true
+  sample_id_key: chip_id
+  checkpoint_metric: iou
+  checkpoint_class: 1
+output:
+  directory: runs/sen1floods11/croma/fcn_s1s2
+Configuration checks passed.
+[Build] preprocessing
+Loading cached statistics for sar: data\statistics\sen1floods11\57be4dc440bf\sar_0321578226838c8d.json
+Loading cached statistics for optical: data\statistics\sen1floods11\57be4dc440bf\optical_b2316b09fcd43301.json
+[Build] datasets and DataLoaders
+Training chips: 251 retained; 1 entirely ignored excluded. Crops require at least one valid pixel (water-free crops retained).
+[Build] model
+Initializing SAR encoder
+Initializing optical encoder
+Initializing joint SAR-optical encoder
+[Build] loss
+[Build] optimizer
+[Build] scheduler
+
+Experiment setup (verified runtime objects)
+Experiment: croma_s1s2_fcn_all_hand_labels
+Model: croma | Class: DensePredictionModel
+Initialization: pretrained
+Model parameters: 674,917,378 total, 2,360,322 trainable
+Pretrained checkpoint: pretrained_models/CROMA_large.pt
+Native input: both
+Input mapping: None
+Configured modalities: ['sar', 'optical']
+Device: cuda | GPU: NVIDIA GeForce RTX 3070
+Seed: 42 | Streams: {'model': 42, 'shuffle': 43, 'crops': 44, 'train_loader': 45, 'val_loader': 46, 'test_loader': 47, 'bolivia_loader': 48}
+Normalization: two_sigma_stretch | Bands: {'sar': [0, 1], 'optical': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12]}
+Component encoder: src.encoders.croma.croma.CROMAEncoder | 672,557,056 total, 0 trainable
+Component adapter: src.adapters.token_to_spatial.TokenToSpatial | 0 total, 0 trainable
+Component head: src.heads.fcn.FCNHead | 2,360,322 total, 2,360,322 trainable
+Head structure: FCNHead(
+  (head): FCNHead(
+    (0): Conv2d(1024, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+    (1): GroupNorm(16, 256, eps=1e-05, affine=True, bias=True)
+    (2): ReLU()
+    (3): Dropout(p=0.1, inplace=False)
+    (4): Conv2d(256, 2, kernel_size=(1, 1), stride=(1, 1))
+  )
+)
+Data [train]: data/sen1floods11/splits/all_hand_labels/flood_train_data.csv | 251 samples | inputs=['sar', 'optical'] | batch=8 | workers=0 | crop=120
+Data [val]: data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv | 89 samples | inputs=['sar', 'optical'] | batch=1 | workers=0 | crop=None
+Data [test]: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv | 90 samples | inputs=['sar', 'optical'] | batch=1 | workers=0 | crop=None
+Data [bolivia]: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv | 15 samples | inputs=['sar', 'optical'] | batch=1 | workers=0 | crop=None
+Loss: CrossEntropyLoss | reduction=mean | weights=[1.0, 8.0] | ignore_index=255
+Optimizer [0]: AdamW | LR=0.003 | weight_decay=0.01 | betas=(0.9, 0.999)
+Scheduler: {'class': 'torch.optim.lr_scheduler.CosineAnnealingLR', 'state': {'T_max': 3200, 'eta_min': 0.0, 'base_lrs': [0.003], 'last_epoch': 0, '_step_count': 1, '_is_initial': False, '_get_lr_called_within_step': False, '_last_lr': [0.003]}, 'T_max': 3200, 'eta_min': 0.0, 'last_epoch': 0}
+Epochs: 100 | Validate every: 2
+Evaluation: tile=120 | stride=60 | tile_batch=1
+Checkpoint selection: validation iou
+Sanity checks: {'optimizer_matches_trainable_parameters': True, 'has_trainable_parameters': True, 'requested_frozen_encoder_is_frozen': True}
+Output: runs\sen1floods11\croma\fcn_s1s2\20261122_164556_da9dfee1
+
+Device: cuda | Run: runs\sen1floods11\croma\fcn_s1s2\20261122_164556_da9dfee1 | Validate every 2 epochs
+Crop debug log (epochs 1-100): runs\sen1floods11\croma\fcn_s1s2\20261122_164556_da9dfee1\debug\training_crops.jsonl
+
+First valid training batch:
+{
+  "inputs": {
+    "sar": {
+      "shape": [
+        8,
+        2,
+        120,
+        120
+      ],
+      "dtype": "torch.float32",
+      "device": "cuda:0",
+      "all_finite": true,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "optical": {
+      "shape": [
+        8,
+        12,
+        120,
+        120
+      ],
+      "dtype": "torch.float32",
+      "device": "cuda:0",
+      "all_finite": true,
+      "min": 0.0,
+      "max": 1.0
+    }
+  },
+  "target": {
+    "shape": [
+      8,
+      120,
+      120
+    ],
+    "dtype": "torch.int64",
+    "valid_pixels": 97643,
+    "ignored_pixels": 17557,
+    "valid_label_counts": {
+      "0": 70982,
+      "1": 26661
+    }
+  },
+  "logits": {
+    "shape": [
+      8,
+      2,
+      120,
+      120
+    ],
+    "dtype": "torch.float32",
+    "device": "cuda:0",
+    "all_finite": true,
+    "min": -1.0203423500061035,
+    "max": 1.1740719079971313
+  },
+  "sanity_checks": {
+    "finite_inputs": true,
+    "finite_logits": true,
+    "output_matches_target": true,
+    "valid_label_range": true
+  }
+}
+Epoch 001/100 | LR 3.00e-03 | Train loss 0.5437
+Traceback (most recent call last):
+  File "d:\UNI\GeoTest\utils.py", line 699, in capture
+    yield
+  File "d:\UNI\GeoTest\run.py", line 61, in run_experiment
+    return _run_experiment(config, run_dir, device)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\UNI\GeoTest\run.py", line 263, in _run_experiment
+    validation = evaluate_split("val", epoch=epoch)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\UNI\GeoTest\run.py", line 193, in evaluate_split
+    return evaluate(
+           ^^^^^^^^^
+  File "d:\UNI\THESIS\.venv\Lib\site-packages\torch\utils\_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "d:\UNI\GeoTest\src\evaluation\evaluator.py", line 124, in evaluate
+    else sliding_window_predict(
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\UNI\THESIS\.venv\Lib\site-packages\torch\utils\_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "d:\UNI\GeoTest\src\evaluation\sliding_window.py", line 77, in sliding_window_predict
+    logits = model(tiles)
+             ^^^^^^^^^^^^
+  File "d:\UNI\THESIS\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\UNI\THESIS\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\UNI\GeoTest\src\models\dense_prediction.py", line 24, in forward
+    features = self.encoder(images)
+               ^^^^^^^^^^^^^^^^^^^^
+  File "d:\UNI\THESIS\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\UNI\THESIS\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\UNI\GeoTest\src\encoders\croma\croma.py", line 41, in forward
+    outputs = self.backbone(
+              ^^^^^^^^^^^^^^
+  File "d:\UNI\THESIS\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\UNI\THESIS\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\UNI\GeoTest\src\encoders\croma\use_croma.py", line 114, in forward
+    joint_encodings = self.cross_encoder(x=SAR_encodings, context=optical_encodings, relative_position_bias=self.attn_bias.to(optical_images.device))  # (bsz, num_patches, encoder_dim)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\UNI\THESIS\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\UNI\THESIS\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\UNI\GeoTest\src\encoders\croma\use_croma.py", line 303, in forward
+    x = ffn(x) + x  # (BSZ, num_patches, dim)
+        ^^^^^^
+  File "d:\UNI\THESIS\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\UNI\THESIS\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\UNI\GeoTest\src\encoders\croma\use_croma.py", line 168, in forward
+    x = self.input_norm(x)  # (BSZ, num_patches, dim)
+        ^^^^^^^^^^^^^^^^^^
+  File "d:\UNI\THESIS\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\UNI\THESIS\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\UNI\THESIS\.venv\Lib\site-packages\torch\nn\modules\normalization.py", line 228, in forward
+    return F.layer_norm(
+           ^^^^^^^^^^^^^
+  File "d:\UNI\THESIS\.venv\Lib\site-packages\torch\nn\functional.py", line 2993, in layer_norm
+    return torch.layer_norm(
+           ^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
