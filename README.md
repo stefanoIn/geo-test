@@ -35,16 +35,16 @@ GeoTest/
 |   |-- baselines/           # Supervised U-Net variants
 |   |-- models/              # Model assembly and factory
 |   `-- evaluation/          # Tiled inference, metrics and prediction figures
-|-- training/                 # Training loop and checkpoint serialization
-|-- experiments/              # Notebooks and supporting analysis scripts
-|-- tests/                    # Unit checks and manual model integration checks
-|-- reports/                  # Analysis outputs and archived tuning records
-|-- runs/                     # Per-run settings, metrics, logs and plots
-|-- data/                     # Local datasets and statistics cache; Git-ignored
-|-- pretrained_models/        # Local pretrained weights and metadata; Git-ignored
-|-- run.py                    # Training, evaluation and resume entry point
-|-- run_batch.py              # Sequential execution of an editable YAML list
-`-- utils.py                  # Configuration validation, builders and reporting
+|-- training/                # Training loop and checkpoint serialization
+|-- experiments/             # Notebooks and supporting analysis scripts
+|-- tests/                   # Unit checks and manual model integration checks
+|-- reports/                 # Analysis outputs and archived tuning records
+|-- runs/                    # Per-run settings, metrics, logs and plots
+|-- data/                    # Local datasets and statistics cache; Git-ignored
+|-- pretrained_models/       # Local pretrained weights and metadata; Git-ignored
+|-- run.py                   # Training, evaluation and resume entry point
+|-- run_batch.py             # Sequential execution of an editable YAML list
+`-- utils.py                 # Configuration validation, builders and reporting
 ```
 
 Experiment settings are stored in YAML files. Datasets and pretrained weights are maintained locally and are excluded from Git.
