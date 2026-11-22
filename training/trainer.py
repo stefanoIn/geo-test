@@ -25,7 +25,7 @@ def train_one_epoch(model, train_loader, optimizer, criterion, device, scheduler
     total_weight = 0.0
 
     for batch_index, batch in enumerate(train_loader, start=1):
-        # Log consumed batches in order, including all-ignore batches we skip.
+        # Log consumed batches in order, including skipped all-ignore batches.
         if batch_logger is not None:
             batch_logger(batch_index, batch)
         target = batch["target"].to(device)

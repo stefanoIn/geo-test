@@ -118,9 +118,9 @@ def main():
         for key, (_native, channels) in case.items()
     }
 
-    # Observe the *real* tensors that arrive at TerraTorch's patch embeddings.
-    # This is more reliable than merely printing the padding we expect the
-    # wrapper to perform. Hooks are removed after one forward pass.
+    # Hooks inspect the tensors received by TerraTorch's patch embeddings.
+    # This verifies the actual padding applied by the wrapper.
+    # Hooks are removed after one forward pass.
     captured = {"embeddings": {}}
     hooks = []
 

@@ -27,7 +27,7 @@ class DensePredictionModel(nn.Module):
 
         # TerraMind may pad input images to whole patches (e.g. 120 -> 128).
         # Decode on the *padded* spatial extent, then remove the padding.
-        # Encoders without this metadata (e.g. CROMA) behave as before.
+        # Encoders without padding metadata use the original input dimensions.
         padded_hw = (
             features.get("padded_size", input_hw)
             if isinstance(features, dict) else input_hw

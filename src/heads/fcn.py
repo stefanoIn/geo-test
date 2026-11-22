@@ -17,8 +17,8 @@ class FCNHead(nn.Module):
             channels=num_classes,
         )
 
-        # Replace BatchNorm with GroupNorm,
-        # matching Sen1Floods11 experiments.
+        # GroupNorm replaces BatchNorm to match
+        # the Sen1Floods11 experiments.
         self.head[1] = nn.GroupNorm(
             num_groups=16,
             num_channels=in_channels // 4,

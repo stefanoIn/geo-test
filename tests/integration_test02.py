@@ -1,4 +1,3 @@
-
 """Smoke test: real Sen1Floods11 training crop and full-image validation."""
 
 from pathlib import Path
@@ -123,7 +122,7 @@ def main():
         f"Loss {train_loss.item():.4f}"
     )
 
-    # No optimizer.step(): we are testing, not training.
+    # No optimizer.step(): model parameters remain unchanged.
     del train_logits, train_loss, train_images, train_target, train_batch
     model.zero_grad(set_to_none=True)
 
