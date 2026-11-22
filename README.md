@@ -12,7 +12,7 @@ The current experiments focus on **water segmentation with the hand-labelled Sen
 | --- | --- |
 | Dataset | Sen1Floods11 hand-labelled chips, selected through split CSVs |
 | Foundation models | CROMA Large; TerraMind v1 Large |
-| GeoFM segmentation heads | Linear segmentation (`1 ? 1` convolution) and FCN |
+| GeoFM segmentation heads | Linear segmentation (`1x1` convolution) and FCN |
 | Supervised baselines | U-Net and ResNet U-Net |
 | Inputs | Sentinel-1 SAR, Sentinel-2 optical, or paired SAR/optical |
 | Execution | Training, evaluation only, checkpoint resume and sequential batch runs |
@@ -24,27 +24,27 @@ The model wrappers expose more options than have been experimentally benchmarked
 
 ```text
 GeoTest/
-??? configs/                 # Training, tuning and evaluation YAMLs
-?   ??? STANDARD_PROTOCOL.md # Reference protocol; not loaded automatically
-?   ??? template.yaml        # Configuration starting point
-??? src/
-?   ??? data/                # Dataset loading, transforms and normalization
-?   ??? encoders/            # CROMA and TerraMind wrappers
-?   ??? adapters/            # Token sequences to spatial feature maps
-?   ??? heads/               # Linear and FCN segmentation heads
-?   ??? baselines/           # Supervised U-Net variants
-?   ??? models/              # Model assembly and factory
-?   ??? evaluation/          # Tiled inference, metrics and prediction figures
-??? training/                # Training loop and checkpoint serialization
-??? experiments/             # Notebooks and supporting analysis scripts
-??? tests/                   # Unit checks and manual model integration checks
-??? reports/                 # Analysis outputs and archived tuning records
-??? runs/                    # Per-run settings, metrics, logs and plots
-??? data/                    # Local datasets and statistics cache; Git-ignored
-??? pretrained_models/       # Local pretrained weights and metadata; Git-ignored
-??? run.py                   # Training, evaluation and resume entry point
-??? run_batch.py             # Sequential execution of an editable YAML list
-??? utils.py                 # Configuration validation, builders and reporting
+|-- configs/                 # Training, tuning and evaluation YAMLs
+|   |-- STANDARD_PROTOCOL.md # Reference protocol; not loaded automatically
+|   `-- template.yaml        # Configuration starting point
+|-- src/
+|   |-- data/                # Dataset loading, transforms and normalization
+|   |-- encoders/            # CROMA and TerraMind wrappers
+|   |-- adapters/            # Token sequences to spatial feature maps
+|   |-- heads/               # Linear and FCN segmentation heads
+|   |-- baselines/           # Supervised U-Net variants
+|   |-- models/              # Model assembly and factory
+|   `-- evaluation/          # Tiled inference, metrics and prediction figures
+|-- training/                 # Training loop and checkpoint serialization
+|-- experiments/              # Notebooks and supporting analysis scripts
+|-- tests/                    # Unit checks and manual model integration checks
+|-- reports/                  # Analysis outputs and archived tuning records
+|-- runs/                     # Per-run settings, metrics, logs and plots
+|-- data/                     # Local datasets and statistics cache; Git-ignored
+|-- pretrained_models/        # Local pretrained weights and metadata; Git-ignored
+|-- run.py                    # Training, evaluation and resume entry point
+|-- run_batch.py              # Sequential execution of an editable YAML list
+`-- utils.py                  # Configuration validation, builders and reporting
 ```
 
 Experiment settings are stored in YAML files. Datasets and pretrained weights are maintained locally and are excluded from Git.
@@ -65,18 +65,18 @@ Each training invocation creates a timestamped run directory containing:
 
 ```text
 <run>/
-??? config.yaml
-??? normalization.json
-??? provenance.json
-??? runtime_setup.json
-??? runtime_setup.txt
-??? run.log
-??? summary.json
-??? checkpoints/             # best.pt and last.pt; Git-ignored
-??? metrics/                 # history.json, validation reports and optional test reports
-??? plots/                   # Training/validation curves and evaluation metric figures
-??? debug/                   # Crop coordinates and validation sample logs
-??? predictions/             # Optional per-chip figures; Git-ignored
+|-- config.yaml
+|-- normalization.json
+|-- provenance.json
+|-- runtime_setup.json
+|-- runtime_setup.txt
+|-- run.log
+|-- summary.json
+|-- checkpoints/              # best.pt and last.pt; Git-ignored
+|-- metrics/                  # history.json, validation reports and optional test reports
+|-- plots/                    # Training/validation curves and evaluation metric figures
+|-- debug/                    # Crop coordinates and validation sample logs
+`-- predictions/              # Optional per-chip figures; Git-ignored
 ```
 
 `summary.json` records checkpoint selection and summary metrics. Detailed reports include confusion counts, pixel accuracy, per-class IoU, mIoU, precision, recall and F1. Validation loss and training loss are recorded in the history. Plot files are saved inside each run's `plots/` directory.
