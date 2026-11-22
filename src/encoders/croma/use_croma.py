@@ -1,3 +1,8 @@
+# Vendored from antofuller/CROMA; see THIRD_PARTY_NOTICES.md for the verified source.
+# Copyright (c) 2023 Anthony Fuller
+# SPDX-License-Identifier: MIT
+# Full licence: CROMA-LICENSE.txt (in this directory).
+
 '''from https://github.com/antofuller/croma'''
 
 from torch import nn, einsum
@@ -117,6 +122,8 @@ def get_2dalibi(num_heads, num_patches):
     # inspired by: https://github.com/ofirpress/attention_with_linear_biases
     points = list(itertools.product(range(int(math.sqrt(num_patches))), range(int(math.sqrt(num_patches)))))
 
+    # ALiBi slope function: Copyright (c) Facebook, Inc. and its affiliates.
+    # MIT licence retained in ALiBi-LICENSE.txt (in this directory).
     def get_slopes(n):
         def get_slopes_power_of_2(n):
             start = (2 ** (-2 ** -(math.log2(n) - 3)))

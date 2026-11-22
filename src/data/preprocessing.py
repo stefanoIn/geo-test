@@ -3,6 +3,9 @@
 import torch
 
 # TerraMind v1 statistics from TerraTorch terramind_register.py.
+# Reproduced statistics source: Copyright 2025 IBM Corp.
+# https://github.com/IBM/terratorch/blob/v1.2.5/terratorch/models/backbones/terramind/model/terramind_register.py
+# Selected/rekeyed entries; Apache License 2.0, retained in TerraTorch-LICENSE.txt.
 # S1: VV/VH in dB. S2: native DN, in the product default band order.
 TERRAMIND_STATS = {
     "S1GRD": {
