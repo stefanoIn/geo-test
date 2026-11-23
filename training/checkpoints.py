@@ -18,6 +18,7 @@ def save_checkpoint(
     metrics=None,
     config=None,
     components=None,
+    rng_state=None,
 ):
     """Save a resumable checkpoint, or only selected model components.
 
@@ -26,6 +27,9 @@ def save_checkpoint(
             e.g. ['head'] or ['adapter', 'head'], to avoid storing a frozen
             pretrained backbone. For partial checkpoints, instantiate the
             same pretrained model *first* before calling load_checkpoint.
+
+    rng_state is an optional caller-owned snapshot of global and loader RNGs.
+    It is returned on loading, but never restored implicitly.
 
     Saving optimizer/scheduler state is optional. The caller decides when a
     checkpoint is 'best' and which file to write; no ranking logic lives here.
@@ -60,6 +64,9 @@ def save_checkpoint(
     if scheduler is not None:
         payload["scheduler_state_dict"] = scheduler.state_dict()
 
+    if rng_state is not None:
+        payload["rng_state"] = rng_state
+
     # Atomic replacement prevents leaving a partially written checkpoint.
     fd, temp_name = tempfile.mkstemp(prefix=f".{path.stem}.", suffix=".tmp", dir=path.parent)
     os.close(fd)
@@ -83,7 +90,8 @@ def load_checkpoint(
 ) -> dict:
     """Restore saved weights and optionally optimizer/scheduler state.
 
-    Returns a small metadata dictionary (epoch, metrics, config, components).
+    Returns metadata and optional rng_state for explicit restoration by the runner.
+    Loading weights for evaluation does not change random-generator states.
     The model must already be instantiated with the same architecture.
     """
     checkpoint = torch.load(path, map_location=map_location, weights_only=True)
@@ -110,4 +118,5 @@ def load_checkpoint(
         "metrics": checkpoint.get("metrics"),
         "config": checkpoint.get("config"),
         "saved_components": checkpoint.get("saved_components"),
+        "rng_state": checkpoint.get("rng_state"),
     }

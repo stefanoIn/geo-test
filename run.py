@@ -23,6 +23,7 @@ from utils import (
     capture_run_output, report_runtime_setup, report_first_training_batch,
     load_config, build_dataset, build_preprocessing, build_loaders,
     experiment_random_seeds, is_supervised_baseline, log_training_crops,
+    capture_rng_state, restore_rng_state,
     build_loss, build_optimizer, build_scheduler, file_sha256, write_json,
     build_run_summary, save_training_plots, save_test_plots, format_iou_metrics,
 )
@@ -64,8 +65,10 @@ def run_experiment(config_path=CONFIG_PATH, device=None):
 def resume_experiment(run_dir, device=None):
     """Continue an interrupted run from last.pt using its saved configuration.
 
-    Legacy checkpoints have no RNG state: model/optimizer/scheduler resume,
-    but crop and shuffle streams restart from the configured seed.
+    New checkpoints restore global, shuffle, crop and loader RNG states at an
+    epoch boundary under the same environment and loader settings. Checkpoints
+    without RNG state remain loadable, with a warning about restarted streams.
+    This does not guarantee bitwise determinism across hardware/CUDA kernels.
     """
     run_dir = Path(run_dir)
     config = load_config(run_dir / "config.yaml", show_config=False)
@@ -104,8 +107,6 @@ def resume_experiment(run_dir, device=None):
     del checkpoint
     with capture_run_output(run_dir / "run.log"):
         print(f"Resuming {checkpoint_path} at epoch {epoch + 1}.", flush=True)
-        print("RNG state was not saved: crop/shuffle streams restart from the seed; "
-              "this is not an exact replay of uninterrupted training.", flush=True)
         return _run_experiment(config, run_dir, device, resume={
             "epoch": epoch, "history": history, "best": best,
         })
@@ -153,7 +154,7 @@ def _run_experiment(config, run_dir, device, resume=None):
         )
         if json.loads(json.dumps(current_normalization)) != saved_normalization:
             raise ValueError("Normalization changed since training; cannot resume")
-        load_checkpoint(run_dir / "checkpoints/last.pt", model,
+        restored = load_checkpoint(run_dir / "checkpoints/last.pt", model,
                         optimizer=optimizer, scheduler=scheduler, map_location=device)
         print(f"Restored optimizer LR: {optimizer.param_groups[0]['lr']:.8g}", flush=True)
     else:
@@ -239,6 +240,11 @@ def _run_experiment(config, run_dir, device, resume=None):
     crop_log_path = run_dir / "debug" / "training_crops.jsonl"
     print(f"Crop debug log (epochs 1-{epochs}): {crop_log_path}", flush=True)
 
+    if resume is not None:
+        if restore_rng_state(restored["rng_state"], loaders):
+            print("Restored global, shuffle, crop and DataLoader RNG states.", flush=True)
+        del restored
+
     for epoch in range(start_epoch, epochs + 1):
         lr_start = optimizer.param_groups[0]["lr"]
         loss = train_one_epoch(
@@ -259,6 +265,7 @@ def _run_experiment(config, run_dir, device, resume=None):
         }
 
         validation = None
+        improved = False
         if epoch % every == 0 or epoch == epochs:
             validation = evaluate_split("val", epoch=epoch)
             save_evaluation_report(
@@ -277,19 +284,24 @@ def _run_experiment(config, run_dir, device, resume=None):
             )
             if score is not None and score > best:
                 best = score
-                save_checkpoint(
-                    best_path, model, epoch,
-                    optimizer=optimizer, scheduler=scheduler,
-                    metrics=row["validation"], config=config,
-                    components=components,
-                )
+                improved = True
+
+        # Both checkpoints describe the same completed epoch, after validation.
+        rng_state = capture_rng_state(loaders)
+        if improved:
+            save_checkpoint(
+                best_path, model, epoch,
+                optimizer=optimizer, scheduler=scheduler,
+                metrics=row["validation"], config=config,
+                components=components, rng_state=rng_state,
+            )
 
         # Keep the last checkpoint separately from the validation-selected best.
         save_checkpoint(
             run_dir / "checkpoints/last.pt", model, epoch,
             optimizer=optimizer, scheduler=scheduler,
             metrics=row.get("validation"), config=config,
-            components=components,
+            components=components, rng_state=rng_state,
         )
 
         history.append(row)

@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import random
 from pathlib import Path
 
 import numpy as np
@@ -376,6 +377,86 @@ def experiment_random_seeds(seed):
     names = ("model", "shuffle", "crops", "train_loader", "val_loader",
              "test_loader", "bolivia_loader")
     return {name: (seed + offset) % (2**63) for offset, name in enumerate(names)}
+
+
+def capture_rng_state(loaders):
+    """Snapshot randomness after a completed epoch; supports nonpersistent workers."""
+    loader_states = {}
+    for name, loader in loaders.items():
+        if loader.persistent_workers:
+            raise ValueError("RNG checkpointing requires nonpersistent DataLoader workers")
+        transform = getattr(loader.dataset, "preprocess_func", None)
+        crop = transform if isinstance(transform, TrainingPreprocess) else None
+        sampler = getattr(loader.sampler, "generator", None)
+        loader_states[name] = {
+            "num_workers": loader.num_workers,
+            "batch_size": loader.batch_size,
+            "dataset_size": len(loader.dataset),
+            "generator": loader.generator.get_state() if loader.generator is not None else None,
+            "sampler": sampler.get_state() if sampler is not None else None,
+            "crop": crop.generator.get_state() if crop is not None and crop.generator is not None else None,
+            "crop_worker_seed": crop.worker_seed if crop is not None else None,
+        }
+    numpy_state = np.random.get_state()
+    return {
+        "version": 1,
+        "python": random.getstate(),
+        # Plain values keep the checkpoint compatible with weights_only=True.
+        "numpy": (numpy_state[0], numpy_state[1].tolist(), *numpy_state[2:]),
+        "torch_cpu": torch.get_rng_state(),
+        "torch_cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else [],
+        "loaders": loader_states,
+    }
+
+
+def restore_rng_state(state, loaders):
+    """Restore after setup/weight loading, before creating the next epoch iterator."""
+    if state is None:
+        print("WARNING: checkpoint has no RNG state; crop/shuffle and other random "
+              "streams restart from initialization. This is not an exact continuation "
+              "of uninterrupted training.", flush=True)
+        return False
+    if state.get("version") != 1 or set(state["loaders"]) != set(loaders):
+        raise ValueError("Incompatible RNG checkpoint version or loader splits")
+    cuda_count = torch.cuda.device_count() if torch.cuda.is_available() else 0
+    if len(state["torch_cuda"]) != cuda_count:
+        raise ValueError("CUDA device count differs from the RNG checkpoint")
+    # Check loader compatibility before modifying any generator.
+    for name, loader in loaders.items():
+        saved = state["loaders"][name]
+        current = (loader.num_workers, loader.batch_size, len(loader.dataset))
+        expected = (saved["num_workers"], saved["batch_size"], saved["dataset_size"])
+        if loader.persistent_workers or current != expected:
+            raise ValueError(f"Loader settings changed for {name}; cannot restore sampling")
+        for key, generator in (("generator", loader.generator),
+                               ("sampler", getattr(loader.sampler, "generator", None))):
+            if (saved[key] is None) != (generator is None):
+                raise ValueError(f"Loader {name} has incompatible {key} generator")
+        transform = getattr(loader.dataset, "preprocess_func", None)
+        if saved["crop"] is not None and not isinstance(transform, TrainingPreprocess):
+            raise ValueError(f"Loader {name} is missing its training crop transform")
+    for name, loader in loaders.items():
+        saved = state["loaders"][name]
+        for key, generator in (("generator", loader.generator),
+                               ("sampler", getattr(loader.sampler, "generator", None))):
+            if generator is not None:
+                generator.set_state(saved[key].cpu())
+        transform = getattr(loader.dataset, "preprocess_func", None)
+        if isinstance(transform, TrainingPreprocess):
+            transform.generator = None
+            if saved["crop"] is not None:
+                transform.generator = torch.Generator()
+                transform.generator.set_state(saved["crop"].cpu())
+            transform.worker_seed = saved["crop_worker_seed"]
+    random.setstate(state["python"])
+    numpy_state = state["numpy"]
+    np.random.set_state((numpy_state[0], np.asarray(numpy_state[1], dtype=np.uint32),
+                         *numpy_state[2:]))
+    # map_location may have moved these byte tensors onto CUDA during loading.
+    torch.set_rng_state(state["torch_cpu"].cpu())
+    if cuda_count:
+        torch.cuda.set_rng_state_all([value.cpu() for value in state["torch_cuda"]])
+    return True
 
 
 # Assemble loaders with random training crops and full-chip evaluation inputs.
