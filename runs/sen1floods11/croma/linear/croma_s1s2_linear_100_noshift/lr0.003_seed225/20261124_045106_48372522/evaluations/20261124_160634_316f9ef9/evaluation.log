@@ -1,0 +1,115 @@
+Evaluation only | Source: runs\sen1floods11\croma\linear\croma_s1s2_linear_100_noshift\lr0.003_seed225\20261124_045106_48372522 | Output: runs\sen1floods11\croma\linear\croma_s1s2_linear_100_noshift\lr0.003_seed225\20261124_045106_48372522\evaluations\20261124_160634_316f9ef9 | Device: cuda
+experiment:
+  name: croma_s1s2_linear_100_noshift_lr0.003_seed225
+  seed: 225
+dataset:
+  name: sen1floods11
+  modalities:
+  - sar
+  - optical
+  train_csv: data/sen1floods11/splits/all_hand_labels/flood_train_data.csv
+  val_csv: data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv
+  test_csv: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv
+  bolivia_csv: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv
+model:
+  name: croma
+  size: large
+  checkpoint: pretrained_models/CROMA_large.pt
+  modality: both
+  image_resolution: 120
+  freeze_encoder: true
+adapter:
+  name: token_to_spatial
+  feature_key: tokens
+  grid_size: null
+head:
+  name: linear_segmentation
+  in_channels: 1024
+  num_classes: 2
+preprocessing:
+  normalization:
+    method: two_sigma_stretch
+    statistics: training_dataset
+    use_8_bit: false
+  band_indices:
+    sar:
+    - 0
+    - 1
+    optical:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 11
+    - 12
+  crop_size: 120
+training:
+  epochs: 50
+  batch_size: 8
+  num_workers: 0
+  validate_every: 1
+  loss:
+    name: cross_entropy
+    ignore_index: 255
+    class_weights: null
+  optimizer:
+    name: adamw
+    learning_rate: 0.003
+    weight_decay: 0.01
+  scheduler:
+    name: cosine_annealing
+    warmup_epochs: 5
+    warmup_start_factor: 0.1
+    eta_min: 0.0
+evaluation:
+  aw_pw_fw: true
+  batch_size: 1
+  tile_size: 120
+  stride: 80
+  tile_batch_size: 8
+  class_names:
+  - non_water
+  - water
+  return_per_sample: true
+  sample_id_key: chip_id
+  checkpoint_metric: miou
+  save_predictions: false
+output:
+  directory: runs/sen1floods11/croma/linear/croma_s1s2_linear_100_noshift/lr0.003_seed225
+Initializing SAR encoder
+Initializing optical encoder
+Initializing joint SAR-optical encoder
+Traceback (most recent call last):
+  File "D:\UNI\GeoTest\utils.py", line 780, in capture
+    yield
+  File "D:\UNI\GeoTest\run.py", line 466, in run_evaluation
+    model = build_model(config).to(device)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\UNI\THESIS\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1388, in to
+    return self._apply(convert)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "D:\UNI\THESIS\.venv\Lib\site-packages\torch\nn\modules\module.py", line 933, in _apply
+    module._apply(fn)
+  File "D:\UNI\THESIS\.venv\Lib\site-packages\torch\nn\modules\module.py", line 933, in _apply
+    module._apply(fn)
+  File "D:\UNI\THESIS\.venv\Lib\site-packages\torch\nn\modules\module.py", line 933, in _apply
+    module._apply(fn)
+  [Previous line repeated 1 more time]
+  File "D:\UNI\THESIS\.venv\Lib\site-packages\torch\nn\modules\module.py", line 966, in _apply
+    param_applied = fn(param)
+                    ^^^^^^^^^
+  File "D:\UNI\THESIS\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1374, in convert
+    return t.to(
+           ^^^^^
+torch.AcceleratorError: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+The CUDA driver logged these messages, which may provide useful details:
+Returning 2 (CUDA_ERROR_OUT_OF_MEMORY) from cuDevicePrimaryCtxRetain
+
+

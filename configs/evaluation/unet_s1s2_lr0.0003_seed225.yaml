@@ -1,0 +1,7 @@
+# Evaluate the validation-selected checkpoint on test and Bolivia.
+mode: evaluation
+source_run: runs/sen1floods11/baselines/unet/unet_s1s2_100_noshift/lr0.0003_seed225/20261124_001739_f6828c77
+splits:
+  test: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv
+  bolivia: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv
+save_predictions: false
