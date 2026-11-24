@@ -2,6 +2,7 @@
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 import geopandas as gpd
@@ -125,6 +126,107 @@ class EnrichmentTests(unittest.TestCase):
             validate_regions(regions([Polygon([(0,0),(1,1),(1,0),(0,1),(0,0)])]))
         with self.assertRaises(ValueError):
             validate_regions(regions([box(-179,-1,179,1)]))
+
+
+class EnrichmentCLITests(unittest.TestCase):
+    def test_defaults_and_overrides(self):
+        from experiments.geographical_exposure.enrich_metadata import parse_args
+        args = parse_args(['--full'])
+        self.assertEqual([s.split('=')[0] for s in args.inventory], ['ssl4eo', 'terramesh', 'stac'])
+        self.assertEqual(args.output_dir, Path('data/metadata/resolve_full'))
+        self.assertEqual(parse_args([]).output_dir, Path('data/metadata/resolve_validation'))
+        self.assertEqual(len(parse_args(['--dataset', 'terramesh']).inventory), 1)
+        args = parse_args(['--inventory', 'ssl4eo=custom.csv', '--resolve-source', 'custom.shp',
+                           '--validated', 'valid.parquet', '--output-dir', 'out'])
+        self.assertEqual(args.inventory, ['ssl4eo=custom.csv'])
+        self.assertEqual(args.resolve_source, Path('custom.shp'))
+        self.assertEqual(args.validated, Path('valid.parquet'))
+        for invalid in [['--inventory', 'bad'], ['--batch-size', '0'],
+                        ['--dataset', 'stac', '--inventory', 'ssl4eo=other.csv'],
+                        ['--inventory', 'stac=a', '--inventory', 'stac=b']]:
+            with self.assertRaises(SystemExit):
+                parse_args(invalid)
+
+    def test_interrupted_enrichment_preserves_cache(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            region_path = root/'regions.parquet'
+            regions([box(0,0,1,1)]).to_parquet(region_path)
+            output = root/'output.parquet'
+            batch = centres([(.5,.5)])
+            enrich_inventory([batch], region_path, output, {'version': 1})
+            manifest = output.with_suffix('.provenance.json')
+            saved = output.read_bytes(), manifest.read_bytes()
+            def interrupted():
+                yield batch
+                raise KeyboardInterrupt
+            with self.assertRaises(KeyboardInterrupt):
+                enrich_inventory(interrupted(), region_path, output, {'version': 2})
+            self.assertEqual(saved, (output.read_bytes(), manifest.read_bytes()))
+            self.assertFalse(list(root.glob('*.pending*')))
+            # A matching cache must not consume the supplied generator.
+            def unused():
+                raise AssertionError('Cache unexpectedly recomputed')
+                yield batch
+            enrich_inventory(unused(), region_path, output, {'version': 1})
+            fresh = root/'fresh.parquet'
+            with self.assertRaises(KeyboardInterrupt):
+                enrich_inventory(interrupted(), region_path, fresh, {})
+            self.assertFalse(fresh.exists())
+            self.assertFalse(fresh.with_suffix('.provenance.json').exists())
+            self.assertFalse(list(root.glob('*.pending*')))
+
+    def test_interrupted_reporting_and_atomic_files(self):
+        from experiments.geographical_exposure.enrich_metadata import describe
+        from geography.enrichment import pending_output
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            out = root/'figures'; out.mkdir()
+            summary = out/'summary.json'; summary.write_text('completed')
+            def interrupted(path, staging):
+                (staging/'partial.pdf').write_bytes(b'partial')
+                raise KeyboardInterrupt
+            with patch('experiments.geographical_exposure.enrich_metadata._describe', side_effect=interrupted):
+                with self.assertRaises(KeyboardInterrupt):
+                    describe(root/'input.parquet', out)
+            self.assertEqual(summary.read_text(), 'completed')
+            self.assertEqual(list(root.iterdir()), [out])
+            with self.assertRaises(KeyboardInterrupt):
+                with pending_output(summary) as pending:
+                    pending.write_text('partial')
+                    raise KeyboardInterrupt
+            self.assertEqual(summary.read_text(), 'completed')
+            self.assertFalse(list(out.glob('*.pending*')))
+
+    def test_tiny_all_inventory_cli(self):
+        from experiments.geographical_exposure import enrich_metadata as cli
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            source = root/'source.shp'
+            regions([box(0,0,1,1)]).to_file(source)
+            ssl = root/'ssl.csv'; ssl.write_text('1,0.5,0.5\n2,2.0,2.0\n')
+            terra = root/'terra.parquet'
+            pd.DataFrame(dict(sample_id=['t'], tar=['majortom_shard_1'], split=['train'],
+                              center_lon=[.5], center_lat=[.5])).to_parquet(terra)
+            stac = root/'collection.json'
+            stac.write_text(json.dumps({'links': [{'rel':'item','href':'item.json'}]}))
+            (root/'item.json').write_text(json.dumps({'type':'Feature', 'id':'chip',
+                'properties':{}, 'geometry':box(.1,.1,.2,.2).__geo_interface__}))
+            out = root/'results'
+            argv = ['enrich_metadata.py', '--full', '--resolve-source', str(source),
+                    '--validated', str(root/'valid.parquet'), '--output-dir', str(out),
+                    '--sample-records', '2', '--batch-size', '1']
+            with patch.object(cli, 'DEFAULT_INVENTORIES', {'ssl4eo':ssl, 'terramesh':terra, 'stac':stac}), \
+                 patch('sys.argv', argv):
+                cli.main()
+            for kind, count in [('ssl4eo',2), ('terramesh',1), ('stac',1)]:
+                with pq.ParquetFile(out/f'{kind}_enriched.parquet') as parquet:
+                    self.assertEqual(parquet.metadata.num_rows, count)
+                summary = json.loads((out/f'{kind}_figures/summary.json').read_text())
+                self.assertEqual(summary['records'], count)
+                self.assertTrue((out/f'{kind}_figures/biome_distribution.pdf').exists())
+            self.assertTrue((out/'validation_summary.json').exists())
+            self.assertFalse(list(root.rglob('*.pending*')))
 
 
 if __name__ == '__main__':

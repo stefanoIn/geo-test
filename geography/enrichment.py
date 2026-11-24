@@ -1,5 +1,7 @@
 """RESOLVE preparation and centre-based ecological assignment in WGS84."""
 from pathlib import Path
+from contextlib import contextmanager
+from tqdm.auto import tqdm
 from collections import Counter
 import hashlib
 import json
@@ -23,6 +25,18 @@ FIELDS = {'biome_id': 'BIOME_NUM', 'biome_name': 'BIOME_NAME', 'biome_color': 'C
           'ecoregion_id': 'ECO_ID', 'ecoregion_name': 'ECO_NAME',
           'ecoregion_color': 'COLOR', 'realm': 'REALM'}
 METHOD = 'make_valid linework; invalid only; recursive polygon extraction; no simplification or reprojection'
+
+
+@contextmanager
+def pending_output(output):
+    """Publish a complete file atomically; remove staging files on interruption."""
+    output = Path(output)
+    temporary = output.with_name(output.stem + '.pending' + output.suffix)
+    try:
+        yield temporary
+        temporary.replace(output)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def fingerprint(path):
@@ -141,27 +155,28 @@ def prepare_resolve(source, output):
         if len(audit) % 10 == 0:
             print(f'Repaired {len(audit)}/{int(invalid.sum())} invalid regions', flush=True)
     output.parent.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(audit, columns=list(audit[0]) if audit else ['ECO_ID', 'review_required']).to_csv(
-        output.with_suffix('.repair.csv'), index=False)
+    with pending_output(output.with_suffix('.repair.csv')) as pending:
+        pd.DataFrame(audit, columns=list(audit[0]) if audit else ['ECO_ID', 'review_required']).to_csv(
+            pending, index=False)
     validate_regions(regions)
     pd.testing.assert_frame_equal(original.drop(columns='geometry'), regions.drop(columns='geometry'))
     assert (original.loc[~invalid].geometry.to_wkb() == regions.loc[~invalid].geometry.to_wkb()).all()
     if any(row['review_required'] for row in audit):
         raise ValueError('Repair changes exceed review thresholds; inspect the repair audit before assignment')
-    temporary = output.with_suffix('.pending.parquet')
-    regions.to_parquet(temporary, compression='zstd', index=False)
-    reloaded = gpd.read_parquet(temporary)
-    validate_regions(reloaded)
-    pd.testing.assert_frame_equal(regions.drop(columns='geometry').reset_index(drop=True), reloaded.drop(columns='geometry'))
-    assert list(regions.geometry.to_wkb()) == list(reloaded.geometry.to_wkb())
-    temporary.replace(output)
+    with pending_output(output) as temporary:
+        regions.to_parquet(temporary, compression='zstd', index=False)
+        reloaded = gpd.read_parquet(temporary)
+        validate_regions(reloaded)
+        pd.testing.assert_frame_equal(regions.drop(columns='geometry').reset_index(drop=True), reloaded.drop(columns='geometry'))
+        assert list(regions.geometry.to_wkb()) == list(reloaded.geometry.to_wkb())
     assert signature['source'] == fingerprint(source), 'Original RESOLVE files changed'
-    manifest_path.write_text(json.dumps(dict(signature=signature, records=len(regions),
-        repaired=int(invalid.sum()), seconds=time.perf_counter()-started, bytes=output.stat().st_size,
-        output_fingerprint=fingerprint(output),
-        limitations=['Invalid-original areas are algebraic reference values only.',
-                     'Planar WGS84 predicates; unwrapped antimeridian edges rejected.',
-                     'Classification describes the centre, not the entire footprint.']), indent=2), encoding='utf-8')
+    with pending_output(manifest_path) as pending:
+        pending.write_text(json.dumps(dict(signature=signature, records=len(regions),
+            repaired=int(invalid.sum()), seconds=time.perf_counter()-started, bytes=output.stat().st_size,
+            output_fingerprint=fingerprint(output),
+            limitations=['Invalid-original areas are algebraic reference values only.',
+                         'Planar WGS84 predicates; unwrapped antimeridian edges rejected.',
+                         'Classification describes the centre, not the entire footprint.']), indent=2), encoding='utf-8')
     return regions
 
 
@@ -256,7 +271,7 @@ def compare_repairs(frame, original, repaired):
     return details
 
 
-def enrich_inventory(batches, regions_path, output, provenance):
+def enrich_inventory(batches, regions_path, output, provenance, *, total_records=None):
     """Incrementally persist geometry-free batches; input record order is retained."""
     output, regions_path = Path(output), Path(regions_path)
     if output.resolve() == regions_path.resolve() or str(output.resolve()) in provenance.get('source', {}):
@@ -268,45 +283,48 @@ def enrich_inventory(batches, regions_path, output, provenance):
     if output.exists() and manifest.exists():
         previous = json.loads(manifest.read_text())
         if previous.get('signature') == signature and previous.get('output_fingerprint') == fingerprint(output):
+            print(f'Using cached enrichment: {output}', flush=True)
             return previous
     regions = gpd.read_parquet(regions_path)
     validate_regions(regions)
     shapely.prepare(regions.geometry.to_numpy())
     tree = shapely.STRtree(regions.geometry)
     output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output.with_suffix('.pending.parquet')
-    writer, count, statuses = None, 0, Counter()
-    last_source_row = -1
-    started = time.perf_counter()
-    try:
-        for frame in batches:
-            if frame.empty:
-                continue
-            if 'source_row' in frame:
-                indices = frame.source_row.to_numpy()
-                if indices[0] <= last_source_row or np.any(np.diff(indices) <= 0):
-                    raise ValueError('Source rows must be unique and increasing across batches')
-                last_source_row = int(indices[-1])
-            assigned = _assign(frame, regions, tree)
-            pd.testing.assert_frame_equal(assigned[list(frame.columns)], frame.reset_index(drop=True))
-            statuses.update(assigned.assignment_status.astype(str))
-            # Fixed categories keep the Arrow schema consistent across batches.
-            table = pa.Table.from_pandas(assigned, preserve_index=False)
-            if writer is None:
-                writer = pq.ParquetWriter(temporary, table.schema, compression='zstd', use_dictionary=True)
-            writer.write_table(table.cast(writer.schema))
-            count += len(frame)
-    finally:
-        if writer is not None:
-            writer.close()
-    if writer is None:
-        raise ValueError('Empty inventory')
-    assert pq.ParquetFile(temporary).metadata.num_rows == count
-    temporary.replace(output)
+    with pending_output(output) as temporary, tqdm(total=total_records, desc=f"Enrich {output.stem}", unit="records") as progress:
+        writer, count, statuses = None, 0, Counter()
+        last_source_row = -1
+        started = time.perf_counter()
+        try:
+            for frame in batches:
+                if frame.empty:
+                    continue
+                if 'source_row' in frame:
+                    indices = frame.source_row.to_numpy()
+                    if indices[0] <= last_source_row or np.any(np.diff(indices) <= 0):
+                        raise ValueError('Source rows must be unique and increasing across batches')
+                    last_source_row = int(indices[-1])
+                assigned = _assign(frame, regions, tree)
+                pd.testing.assert_frame_equal(assigned[list(frame.columns)], frame.reset_index(drop=True))
+                statuses.update(assigned.assignment_status.astype(str))
+                # Fixed categories keep the Arrow schema consistent across batches.
+                table = pa.Table.from_pandas(assigned, preserve_index=False)
+                if writer is None:
+                    writer = pq.ParquetWriter(temporary, table.schema, compression='zstd', use_dictionary=True)
+                writer.write_table(table.cast(writer.schema))
+                count += len(frame)
+                progress.update(len(frame))
+        finally:
+            if writer is not None:
+                writer.close()
+        if writer is None:
+            raise ValueError('Empty inventory')
+        with pq.ParquetFile(temporary) as parquet:
+            assert parquet.metadata.num_rows == count
     info = dict(signature=signature, geometry_repair_method=METHOD,
                 resolve_provenance=str(regions_path.with_suffix('.provenance.json')),
                 input_records=count, output_records=count,
                 assignment_status_counts=dict(statuses), seconds=time.perf_counter()-started,
                 bytes=output.stat().st_size, output_fingerprint=fingerprint(output))
-    manifest.write_text(json.dumps(info, indent=2), encoding='utf-8')
+    with pending_output(manifest) as pending:
+        pending.write_text(json.dumps(info, indent=2), encoding='utf-8')
     return info
