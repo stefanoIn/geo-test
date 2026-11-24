@@ -3,7 +3,7 @@
 The default uses bounded validation subsets. --full explicitly enriches complete
 inventories; repair comparisons always use the bounded subsets.
 """
-from contextlib import closing
+from contextlib import closing, nullcontext
 import argparse
 import json
 from pathlib import Path
@@ -43,6 +43,10 @@ def parse_args(argv=None):
     parser.add_argument('--sample-records', type=int, default=4096)
     parser.add_argument('--batch-size', type=int, default=65536)
     parser.add_argument('--full', action='store_true')
+    parser.add_argument('--aggregation-backend', choices=['pandas', 'sqlite'], default='pandas',
+                        help='Pandas for in-memory aggregation; SQLite for lower RAM use.')
+    parser.add_argument('--report-only', action='store_true',
+                        help='Regenerate reports from enriched files in --output-dir, without enrichment.')
     args = parser.parse_args(argv)
     if args.sample_records <= 0 or args.batch_size <= 0:
         parser.error('Sample and batch sizes must be positive')
@@ -62,7 +66,7 @@ def parse_args(argv=None):
     paths = DEFAULT_INVENTORIES | overrides
     args.inventory = [f'{kind}={paths[kind]}' for kind in selected]
     if args.output_dir is None:
-        args.output_dir = Path('data/metadata/resolve_full' if args.full else 'data/metadata/resolve_validation')
+        args.output_dir = Path('data/metadata/resolve_full' if args.full or args.report_only else 'data/metadata/resolve_validation')
     return args
 
 
@@ -94,8 +98,68 @@ def representative_centres(kind, path, size):
     return result
 
 
-def _describe(path, out):
-    """Aggregate via disk-backed SQL; plot a bounded sample of centres."""
+def _aggregate(path, backend):
+    columns = ['center_lon', 'center_lat', 'biome_id', 'biome_name', 'biome_color',
+               'ecoregion_id', 'ecoregion_name', 'ecoregion_color', 'assignment_status']
+    centres, frames, tables = [], [], {}
+    print(f'Aggregating {path.name} with {backend}...', flush=True)
+    with tempfile.TemporaryDirectory() as temp, (
+            closing(sqlite3.connect(str(Path(temp)/'counts.sqlite'))) if backend == 'sqlite'
+            else nullcontext()) as db:
+        with pq.ParquetFile(path) as parquet, tqdm(total=parquet.metadata.num_rows,
+                desc=f'Read {path.stem}', unit='records') as progress:
+            for batch in parquet.iter_batches(batch_size=65536, columns=columns):
+                frame = batch.to_pandas()
+                if backend == 'pandas':
+                    frames.append(frame)
+                else:
+                    frame.to_sql('records', db, if_exists='append', index=False)
+                # Preserve the existing per-batch plotting sample and random seed.
+                centres.append(frame.sample(min(128, len(frame)), random_state=42))
+                progress.update(len(frame))
+        if backend == 'pandas':
+            data = pd.concat(frames, ignore_index=True)
+            del frames
+            count = len(data)
+            statuses = data.assignment_status.value_counts(sort=False, dropna=True)
+            statuses = {str(key): int(value) for key, value in statuses.items() if value}
+        else:
+            count = db.execute('select count(*) from records').fetchone()[0]
+            statuses = dict(db.execute('select assignment_status,count(*) from records group by assignment_status'))
+        summary = dict(records=count, assignment_status_counts=statuses,
+                       uniquely_classified_records=sum(statuses.get(k, 0) for k in ['classified', 'boundary']))
+        for category in ['biome', 'ecoregion']:
+            print(f'Counting {category} records and exact unique centres...', flush=True)
+            key = category + '_id'
+            groups = [key, category + '_name', category + '_color']
+            if backend == 'pandas':
+                # Match SQL NULL filtering and retain null names/colours in groups.
+                valid = data.assignment_status.notna() & data.assignment_status.ne('unclassified') & data[key].notna()
+                selected = data.loc[valid, groups + ['center_lon', 'center_lat']]
+                table = selected.groupby(groups, dropna=False, observed=True, sort=True).size().reset_index(name='records')
+                table = table.sort_values('records', ascending=False, kind='stable')
+                unique = selected[[key, 'center_lon', 'center_lat']].drop_duplicates()
+                unique = unique.groupby(key, observed=True, sort=True).size().reset_index(name='unique_centres')
+                del selected
+            else:
+                valid = "assignment_status != 'unclassified' and " + key + ' is not null'
+                table = pd.read_sql_query(f'''select {key}, {category}_name, {category}_color,
+                    count(*) as records from records where {valid}
+                    group by {key}, {category}_name, {category}_color order by records desc''', db)
+                unique = pd.read_sql_query(f'''select {key},count(*) as unique_centres from
+                    (select distinct {key},center_lon,center_lat from records where {valid})
+                    group by {key}''', db)
+            table = table.merge(unique, on=key)
+            table['fraction_all_records'] = table.records/count
+            tables[category] = table
+            summary['represented_'+category+'s'] = len(table)
+    return tables, summary, centres
+
+
+def _describe(path, out, aggregation_backend='pandas'):
+    """Aggregate ecological assignments and plot the existing bounded centre sample."""
+    if aggregation_backend not in {'pandas', 'sqlite'}:
+        raise ValueError('aggregation_backend must be pandas or sqlite')
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
@@ -104,43 +168,18 @@ def _describe(path, out):
     out.mkdir(parents=True, exist_ok=True)
     scope=json.loads(path.with_suffix('.provenance.json').read_text())['signature']['inputs']['scope']
     title=f'{path.stem} ({scope.replace("_", " ")})'
-    centres = []
-    with tempfile.TemporaryDirectory() as temp:
-        with closing(sqlite3.connect(str(Path(temp)/'counts.sqlite'))) as db, pq.ParquetFile(path) as parquet, \
-             tqdm(total=parquet.metadata.num_rows, desc=f'Aggregate {path.stem}', unit='records') as progress:
-            for batch in parquet.iter_batches(batch_size=65536):
-                frame = batch.to_pandas()
-                frame[['center_lon','center_lat','biome_id','biome_name','biome_color',
-                       'ecoregion_id','ecoregion_name','ecoregion_color','assignment_status']].to_sql(
-                           'records', db, if_exists='append', index=False)
-                # Bounded reservoir of plotting candidates, independent of category totals.
-                centres.append(frame.sample(min(128,len(frame)), random_state=42))
-                progress.update(len(frame))
-            count = db.execute('select count(*) from records').fetchone()[0]
-            statuses = dict(db.execute('select assignment_status,count(*) from records group by assignment_status'))
-            summary = dict(records=count, assignment_status_counts=statuses,
-                           uniquely_classified_records=sum(statuses.get(k,0) for k in ['classified','boundary']))
-            tables = {}
-            for category in ['biome','ecoregion']:
-                valid = "assignment_status != 'unclassified' and " + category + '_id is not null'
-                table = pd.read_sql_query(f'''select {category}_id, {category}_name, {category}_color,
-                    count(*) as records from records where {valid}
-                    group by {category}_id, {category}_name, {category}_color order by records desc''', db)
-                unique = pd.read_sql_query(f'''select {category}_id,count(*) as unique_centres from
-                    (select distinct {category}_id,center_lon,center_lat from records where {valid})
-                    group by {category}_id''', db)
-                table = table.merge(unique, on=category+'_id')
-                table['fraction_all_records'] = table.records/count
-                table.to_csv(out/f'{category}_counts.csv', index=False)
-                tables[category] = table
-                summary['represented_'+category+'s'] = len(table)
-                shown=table.head(20).iloc[::-1]
-                fig,ax=plt.subplots(figsize=(10,max(3,.3*len(shown))))
-                ax.barh(shown[category+'_name'], shown.fraction_all_records, color=shown[category+'_color'])
-                ax.set(xlabel='Fraction of all inventory records', title=f'{title}: {category} composition'+(' (top 20)' if len(table)>20 else ''))
-                fig.tight_layout()
-                fig.savefig(out/f'{category}_distribution.pdf',bbox_inches='tight')
-                plt.close(fig)
+    tables, summary, centres = _aggregate(path, aggregation_backend)
+    print(f'Generating category figures for {path.stem}...', flush=True)
+    for category, table in tables.items():
+        table.to_csv(out/f'{category}_counts.csv', index=False)
+        shown=table.head(20).iloc[::-1]
+        fig,ax=plt.subplots(figsize=(10,max(3,.3*len(shown))))
+        ax.barh(shown[category+'_name'], shown.fraction_all_records, color=shown[category+'_color'])
+        ax.set(xlabel='Fraction of all inventory records', title=f'{title}: {category} composition'+(' (top 20)' if len(table)>20 else ''))
+        fig.tight_layout()
+        fig.savefig(out/f'{category}_distribution.pdf',bbox_inches='tight')
+        plt.close(fig)
+    print(f'Generating sampled-centre figure for {path.stem}...', flush=True)
     points=pd.concat(centres,ignore_index=True)
     if len(points)>10000:
         points=points.sample(10000,random_state=42)
@@ -157,14 +196,15 @@ def _describe(path, out):
     return tables['biome']
 
 
-def describe(path, out):
+def describe(path, out, aggregation_backend='pandas'):
     """Stage reports so interruption during aggregation preserves completed reports."""
     path, out = Path(path), Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.describe-', dir=out.parent) as temporary:
         staging = Path(temporary)
         try:
-            result = _describe(path, staging)
+            result = (_describe(path, staging) if aggregation_backend == 'pandas' else
+                      _describe(path, staging, aggregation_backend))
             out.mkdir(parents=True, exist_ok=True)
             # The summary is the completion marker and is published last.
             (out / 'summary.json').unlink(missing_ok=True)
@@ -179,12 +219,25 @@ def describe(path, out):
 def main():
     args = parse_args()
     start=time.perf_counter()
-    regions=prepare_resolve(args.resolve_source,args.validated)
-    original=gpd.read_file(args.resolve_source)
+    if not args.report_only:
+        regions=prepare_resolve(args.resolve_source,args.validated)
+        original=gpd.read_file(args.resolve_source)
     args.output_dir.mkdir(parents=True,exist_ok=True)
     all_biomes=[];report={}
     for spec in args.inventory:
         kind,source=spec.split('=',1);source=Path(source)
+        if args.report_only:
+            output = args.output_dir/f'{kind}_enriched.parquet'
+            manifest = output.with_suffix('.provenance.json')
+            if not output.is_file() or not manifest.is_file():
+                raise FileNotFoundError(f'Completed enrichment and provenance required: {output}')
+            print(f'Checking completed output fingerprint: {output}', flush=True)
+            if json.loads(manifest.read_text()).get('output_fingerprint') != fingerprint(output):
+                raise ValueError(f'Enriched output does not match its provenance: {output}')
+            table = describe(output, args.output_dir/f'{kind}_figures', args.aggregation_backend)
+            table['inventory'] = kind
+            all_biomes.append(table)
+            continue
         print(f'Validating {kind}: {source}',flush=True)
         sample=representative_centres(kind,source,args.sample_records)
         comparison=compare_repairs(sample,original,regions)
@@ -219,9 +272,10 @@ def main():
         info['repair_bbox_candidate_records']=candidate_count
         info['source_counts_in_subset']=sample.source.value_counts().to_dict()
         report[kind]=info
-        table=describe(output,args.output_dir/f'{kind}_figures');table['inventory']=kind;all_biomes.append(table)
+        table=describe(output,args.output_dir/f'{kind}_figures',args.aggregation_backend);table['inventory']=kind;all_biomes.append(table)
         print(kind,info['comparison_counts'],info['assignment_status_counts'],flush=True)
     import matplotlib.pyplot as plt
+    print('Generating inventory comparison figure...', flush=True)
     combined=pd.concat(all_biomes,ignore_index=True)
     distribution=combined.pivot(index='biome_name',columns='inventory',values='fraction_all_records').fillna(0)
     fig,ax=plt.subplots(figsize=(10,max(4,.4*len(distribution))))
@@ -230,6 +284,9 @@ def main():
     with pending_output(args.output_dir/'biome_comparison.pdf') as pending:
         fig.savefig(pending,bbox_inches='tight')
     plt.close(fig)
+    if args.report_only:
+        print(f'Reports completed in {time.perf_counter()-start:.1f}s', flush=True)
+        return
     report['elapsed_seconds']=time.perf_counter()-start
     try:
         import psutil

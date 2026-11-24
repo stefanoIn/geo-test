@@ -60,8 +60,46 @@ prove classification invariance elsewhere. CSV category counts, PDF plots and
 `validation_summary.json` describe the scope actually processed.
 
 Use `--full` and a separate output directory to enrich full inventories explicitly.
-Only the repair comparison remains subset-based. Enrichment and descriptive
+Only the repair comparison remains subset-based. Enrichment and SQLite descriptive
 aggregation are batched; inventory coordinates are not duplicated as polygons.
 Matching source/configuration fingerprints reuse completed enrichment outputs.
 Geographical exposure and ecological membership do not prove historical model
 exposure, representation quality or downstream label leakage.
+
+## Descriptive aggregation
+
+Pandas is the default reporting backend. It loads only the nine required
+coordinate, category and status columns, then uses vectorised grouping and exact
+coordinate deduplication. This uses more RAM than `--aggregation-backend sqlite`,
+which streams those columns into a temporary disk-backed database. Both backends
+retain the same filtering, all-record denominators, per-category unique-centre
+counts and fixed-seed plotting sample. No coordinates are rounded.
+
+Run from the repository directory:
+
+```powershell
+# Enrich all inventories and generate reports using Pandas.
+python -u experiments/geographical_exposure/enrich_metadata.py --full
+
+# Regenerate reports only; no RESOLVE preparation or inventory enrichment.
+python -u experiments/geographical_exposure/enrich_metadata.py --report-only
+
+# Report one existing inventory with lower RAM use.
+python -u experiments/geographical_exposure/enrich_metadata.py --report-only --dataset terramesh --aggregation-backend sqlite
+
+# Report an existing subset or another output directory.
+python -u experiments/geographical_exposure/enrich_metadata.py --report-only --dataset ssl4eo --output-dir data/metadata/resolve_validation
+
+# Run the existing small regression tests locally.
+python -m unittest tests.test_geography -v
+```
+
+`--report-only` defaults to `data/metadata/resolve_full/`. It reads
+`<dataset>_enriched.parquet` and its provenance there and verifies the saved output
+fingerprint. Raw inventory files and RESOLVE files are not read in this mode.
+Per-inventory CSVs, summary JSON and PDFs are regenerated in `<dataset>_figures/`,
+along with `biome_comparison.pdf` for the selected inventories. Enriched Parquet,
+provenance, repair audits and `validation_summary.json` remain untouched.
+Reports are staged before publication, preserving completed reports if aggregation
+or figure generation is interrupted. Progress messages distinguish reading,
+counting/deduplication and figure generation. Hash verification may remain quiet.
