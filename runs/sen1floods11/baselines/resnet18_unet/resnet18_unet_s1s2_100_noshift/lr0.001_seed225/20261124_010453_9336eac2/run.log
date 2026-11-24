@@ -1,0 +1,226 @@
+Configuration: configs\resnet_unet\resnet18_unet_s1s2_100_noshift\resnet18_unet_s1s2_100_noshift_lr0.001_seed225.yaml | Run: runs\sen1floods11\baselines\resnet18_unet\resnet18_unet_s1s2_100_noshift\lr0.001_seed225\20261124_010453_9336eac2
+experiment:
+  name: resnet18_unet_s1s2_100_noshift_lr0.001_seed225
+  seed: 225
+dataset:
+  name: sen1floods11
+  modalities:
+  - sar
+  - optical
+  train_csv: data/sen1floods11/splits/all_hand_labels/flood_train_data.csv
+  val_csv: data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv
+model:
+  name: resnet_unet
+  encoder_name: resnet18
+  in_channels: 15
+head:
+  num_classes: 2
+preprocessing:
+  normalization:
+    method: zscore
+    statistics: training_dataset
+    use_8_bit: false
+  band_indices:
+    sar:
+    - 0
+    - 1
+    optical:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+  crop_size: 120
+training:
+  epochs: 50
+  batch_size: 8
+  num_workers: 0
+  validate_every: 1
+  loss:
+    name: cross_entropy
+    ignore_index: 255
+    class_weights: null
+  optimizer:
+    name: adamw
+    learning_rate: 0.001
+    weight_decay: 0.01
+  scheduler:
+    name: cosine_annealing
+    warmup_epochs: 5
+    warmup_start_factor: 0.1
+    eta_min: 0.0
+evaluation:
+  aw_pw_fw: true
+  batch_size: 1
+  tile_size: 120
+  stride: 80
+  tile_batch_size: 8
+  class_names:
+  - non_water
+  - water
+  return_per_sample: true
+  sample_id_key: chip_id
+  checkpoint_metric: miou
+  save_predictions: false
+output:
+  directory: runs/sen1floods11/baselines/resnet18_unet/resnet18_unet_s1s2_100_noshift/lr0.001_seed225
+Configuration checks passed.
+[Build] preprocessing
+Loading cached statistics for sar: data\statistics\sen1floods11\57be4dc440bf\sar_0321578226838c8d.json
+Loading cached statistics for optical: data\statistics\sen1floods11\57be4dc440bf\optical_b2316b09fcd43301.json
+[Build] datasets and DataLoaders
+Training chips: 251 retained; 1 entirely ignored excluded. Crops require at least one valid pixel (water-free crops retained).
+[Build] model
+[Build] loss
+[Build] optimizer
+[Build] scheduler
+
+Experiment setup (verified runtime objects)
+Experiment: resnet18_unet_s1s2_100_noshift_lr0.001_seed225
+Model: resnet_unet | Class: ResNetUNet
+Initialization: random
+Model parameters: 14,365,986 total, 14,365,986 trainable
+Pretrained checkpoint: None
+Native input: None
+Input mapping: None
+Configured modalities: ['sar', 'optical']
+Device: cuda | GPU: NVIDIA GeForce RTX 3070
+Seed: 225 | Streams: {'model': 225, 'shuffle': 226, 'crops': 227, 'train_loader': 228, 'val_loader': 229, 'test_loader': 230, 'bolivia_loader': 231}
+Normalization: zscore | Bands: {'sar': [0, 1], 'optical': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]}
+Component network: segmentation_models_pytorch.decoders.unet.model.Unet | 14,365,986 total, 14,365,986 trainable
+Data [train]: data/sen1floods11/splits/all_hand_labels/flood_train_data.csv | 251 samples | inputs=['sar', 'optical'] | batch=8 | workers=0 | crop=120
+Data [val]: data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv | 89 samples | inputs=['sar', 'optical'] | batch=1 | workers=0 | crop=None
+Loss: CrossEntropyLoss | reduction=mean | weights=None | ignore_index=255
+Optimizer [0]: AdamW | LR=0.0001 | weight_decay=0.01 | betas=(0.9, 0.999)
+Scheduler: {'class': 'torch.optim.lr_scheduler.SequentialLR', 'state': {'_milestones': [160], 'last_epoch': 0, '_last_lr': [0.0001], '_schedulers': [{'start_factor': 0.1, 'end_factor': 1.0, 'total_iters': 160, 'base_lrs': [0.001], 'last_epoch': 0, '_step_count': 1, '_is_initial': False, '_get_lr_called_within_step': False, '_last_lr': [0.0001]}, {'T_max': 1440, 'eta_min': 0.0, 'base_lrs': [0.001], 'last_epoch': -1, '_step_count': 1, '_is_initial': False, '_get_lr_called_within_step': False, '_last_lr': [0.0001]}]}, 'last_epoch': 0}
+Epochs: 50 | Validate every: 1
+Evaluation: tile=120 | stride=80 | tile_batch=8
+Checkpoint selection: validation miou
+Sanity checks: {'optimizer_matches_trainable_parameters': True, 'has_trainable_parameters': True, 'baseline_all_parameters_trainable': True}
+Output: runs\sen1floods11\baselines\resnet18_unet\resnet18_unet_s1s2_100_noshift\lr0.001_seed225\20261124_010453_9336eac2
+
+Device: cuda | Run: runs\sen1floods11\baselines\resnet18_unet\resnet18_unet_s1s2_100_noshift\lr0.001_seed225\20261124_010453_9336eac2 | Validate every 1 epochs
+Crop debug log (epochs 1-50): runs\sen1floods11\baselines\resnet18_unet\resnet18_unet_s1s2_100_noshift\lr0.001_seed225\20261124_010453_9336eac2\debug\training_crops.jsonl
+
+First valid training batch:
+{
+  "inputs": {
+    "sar": {
+      "shape": [
+        8,
+        2,
+        120,
+        120
+      ],
+      "dtype": "torch.float32",
+      "device": "cuda:0",
+      "all_finite": true,
+      "min": -12.538602828979492,
+      "max": 7.308671951293945
+    },
+    "optical": {
+      "shape": [
+        8,
+        13,
+        120,
+        120
+      ],
+      "dtype": "torch.float32",
+      "device": "cuda:0",
+      "all_finite": true,
+      "min": -2.6063435077667236,
+      "max": 3.6623637676239014
+    }
+  },
+  "target": {
+    "shape": [
+      8,
+      120,
+      120
+    ],
+    "dtype": "torch.int64",
+    "valid_pixels": 94741,
+    "ignored_pixels": 20459,
+    "valid_label_counts": {
+      "0": 66797,
+      "1": 27944
+    }
+  },
+  "logits": {
+    "shape": [
+      8,
+      2,
+      120,
+      120
+    ],
+    "dtype": "torch.float32",
+    "device": "cuda:0",
+    "all_finite": true,
+    "min": -7.17273473739624,
+    "max": 3.846403121948242
+  },
+  "sanity_checks": {
+    "finite_inputs": true,
+    "finite_logits": true,
+    "output_matches_target": true,
+    "valid_label_range": true
+  }
+}
+Epoch 001/50 | LR 1.00e-04 | Train loss 0.4539 | Val loss 0.2808 | mIoU 0.7287 | non_water IoU 0.9196 | water IoU 0.5379
+Epoch 002/50 | LR 2.80e-04 | Train loss 0.2427 | Val loss 0.1328 | mIoU 0.8549 | non_water IoU 0.9637 | water IoU 0.7461
+Epoch 003/50 | LR 4.60e-04 | Train loss 0.1634 | Val loss 0.1730 | mIoU 0.7656 | non_water IoU 0.9299 | water IoU 0.6014
+Epoch 004/50 | LR 6.40e-04 | Train loss 0.1352 | Val loss 0.1025 | mIoU 0.8416 | non_water IoU 0.9640 | water IoU 0.7193
+Epoch 005/50 | LR 8.20e-04 | Train loss 0.1256 | Val loss 0.1249 | mIoU 0.7927 | non_water IoU 0.9425 | water IoU 0.6428
+Epoch 006/50 | LR 1.00e-03 | Train loss 0.1172 | Val loss 0.0933 | mIoU 0.8620 | non_water IoU 0.9677 | water IoU 0.7562
+Epoch 007/50 | LR 9.99e-04 | Train loss 0.1388 | Val loss 0.1081 | mIoU 0.8200 | non_water IoU 0.9560 | water IoU 0.6839
+Epoch 008/50 | LR 9.95e-04 | Train loss 0.1568 | Val loss 0.1012 | mIoU 0.8388 | non_water IoU 0.9625 | water IoU 0.7150
+Epoch 009/50 | LR 9.89e-04 | Train loss 0.1349 | Val loss 0.0828 | mIoU 0.8599 | non_water IoU 0.9658 | water IoU 0.7540
+Epoch 010/50 | LR 9.81e-04 | Train loss 0.1167 | Val loss 0.0910 | mIoU 0.8471 | non_water IoU 0.9630 | water IoU 0.7312
+Epoch 011/50 | LR 9.70e-04 | Train loss 0.1497 | Val loss 0.1016 | mIoU 0.8303 | non_water IoU 0.9564 | water IoU 0.7041
+Epoch 012/50 | LR 9.57e-04 | Train loss 0.1202 | Val loss 0.1119 | mIoU 0.8258 | non_water IoU 0.9514 | water IoU 0.7002
+Epoch 013/50 | LR 9.41e-04 | Train loss 0.1198 | Val loss 0.0820 | mIoU 0.8630 | non_water IoU 0.9657 | water IoU 0.7603
+Epoch 014/50 | LR 9.24e-04 | Train loss 0.1351 | Val loss 0.0903 | mIoU 0.8471 | non_water IoU 0.9652 | water IoU 0.7289
+Epoch 015/50 | LR 9.05e-04 | Train loss 0.1137 | Val loss 0.0784 | mIoU 0.8571 | non_water IoU 0.9677 | water IoU 0.7466
+Epoch 016/50 | LR 8.83e-04 | Train loss 0.0947 | Val loss 0.0751 | mIoU 0.8678 | non_water IoU 0.9694 | water IoU 0.7661
+Epoch 017/50 | LR 8.60e-04 | Train loss 0.0883 | Val loss 0.0817 | mIoU 0.8630 | non_water IoU 0.9688 | water IoU 0.7571
+Epoch 018/50 | LR 8.35e-04 | Train loss 0.1299 | Val loss 0.0935 | mIoU 0.8173 | non_water IoU 0.9598 | water IoU 0.6747
+Epoch 019/50 | LR 8.08e-04 | Train loss 0.1514 | Val loss 0.1026 | mIoU 0.8520 | non_water IoU 0.9656 | water IoU 0.7383
+Epoch 020/50 | LR 7.80e-04 | Train loss 0.1017 | Val loss 0.0866 | mIoU 0.8334 | non_water IoU 0.9634 | water IoU 0.7035
+Epoch 021/50 | LR 7.50e-04 | Train loss 0.1266 | Val loss 0.0805 | mIoU 0.8601 | non_water IoU 0.9679 | water IoU 0.7523
+Epoch 022/50 | LR 7.19e-04 | Train loss 0.0961 | Val loss 0.0748 | mIoU 0.8708 | non_water IoU 0.9711 | water IoU 0.7705
+Epoch 023/50 | LR 6.87e-04 | Train loss 0.0961 | Val loss 0.0684 | mIoU 0.8766 | non_water IoU 0.9717 | water IoU 0.7815
+Epoch 024/50 | LR 6.55e-04 | Train loss 0.1192 | Val loss 0.0778 | mIoU 0.8711 | non_water IoU 0.9704 | water IoU 0.7718
+Epoch 025/50 | LR 6.21e-04 | Train loss 0.1128 | Val loss 0.0790 | mIoU 0.8825 | non_water IoU 0.9718 | water IoU 0.7932
+Epoch 026/50 | LR 5.87e-04 | Train loss 0.1083 | Val loss 0.0769 | mIoU 0.8798 | non_water IoU 0.9702 | water IoU 0.7894
+Epoch 027/50 | LR 5.52e-04 | Train loss 0.1028 | Val loss 0.0710 | mIoU 0.8784 | non_water IoU 0.9712 | water IoU 0.7856
+Epoch 028/50 | LR 5.17e-04 | Train loss 0.1012 | Val loss 0.0949 | mIoU 0.8380 | non_water IoU 0.9605 | water IoU 0.7156
+Epoch 029/50 | LR 4.83e-04 | Train loss 0.0963 | Val loss 0.0803 | mIoU 0.8441 | non_water IoU 0.9658 | water IoU 0.7224
+Epoch 030/50 | LR 4.48e-04 | Train loss 0.1108 | Val loss 0.0775 | mIoU 0.8561 | non_water IoU 0.9677 | water IoU 0.7446
+Epoch 031/50 | LR 4.13e-04 | Train loss 0.0988 | Val loss 0.0693 | mIoU 0.8832 | non_water IoU 0.9737 | water IoU 0.7926
+Epoch 032/50 | LR 3.79e-04 | Train loss 0.0853 | Val loss 0.0714 | mIoU 0.8774 | non_water IoU 0.9727 | water IoU 0.7821
+Epoch 033/50 | LR 3.45e-04 | Train loss 0.0768 | Val loss 0.0690 | mIoU 0.8767 | non_water IoU 0.9723 | water IoU 0.7811
+Epoch 034/50 | LR 3.13e-04 | Train loss 0.0869 | Val loss 0.0761 | mIoU 0.8578 | non_water IoU 0.9683 | water IoU 0.7472
+Epoch 035/50 | LR 2.81e-04 | Train loss 0.0831 | Val loss 0.0685 | mIoU 0.8759 | non_water IoU 0.9716 | water IoU 0.7802
+Epoch 036/50 | LR 2.50e-04 | Train loss 0.0695 | Val loss 0.0692 | mIoU 0.8851 | non_water IoU 0.9736 | water IoU 0.7965
+Epoch 037/50 | LR 2.20e-04 | Train loss 0.0851 | Val loss 0.0727 | mIoU 0.8789 | non_water IoU 0.9692 | water IoU 0.7886
+Epoch 038/50 | LR 1.92e-04 | Train loss 0.0738 | Val loss 0.0693 | mIoU 0.8815 | non_water IoU 0.9734 | water IoU 0.7895
+Epoch 039/50 | LR 1.65e-04 | Train loss 0.0775 | Val loss 0.0662 | mIoU 0.8881 | non_water IoU 0.9746 | water IoU 0.8017
+Epoch 040/50 | LR 1.40e-04 | Train loss 0.0840 | Val loss 0.0672 | mIoU 0.8864 | non_water IoU 0.9745 | water IoU 0.7983
+Epoch 041/50 | LR 1.17e-04 | Train loss 0.0686 | Val loss 0.0662 | mIoU 0.8923 | non_water IoU 0.9745 | water IoU 0.8102
+Epoch 042/50 | LR 9.55e-05 | Train loss 0.0802 | Val loss 0.0657 | mIoU 0.8926 | non_water IoU 0.9753 | water IoU 0.8099
+Epoch 043/50 | LR 7.60e-05 | Train loss 0.0750 | Val loss 0.0658 | mIoU 0.8913 | non_water IoU 0.9753 | water IoU 0.8073
+Epoch 044/50 | LR 5.85e-05 | Train loss 0.0617 | Val loss 0.0652 | mIoU 0.8940 | non_water IoU 0.9757 | water IoU 0.8124
+Epoch 045/50 | LR 4.32e-05 | Train loss 0.0786 | Val loss 0.0652 | mIoU 0.8922 | non_water IoU 0.9751 | water IoU 0.8093
+Epoch 046/50 | LR 3.02e-05 | Train loss 0.0771 | Val loss 0.0662 | mIoU 0.8855 | non_water IoU 0.9743 | water IoU 0.7967
+Epoch 047/50 | LR 1.94e-05 | Train loss 0.0761 | Val loss 0.0640 | mIoU 0.8926 | non_water IoU 0.9752 | water IoU 0.8101
+Epoch 048/50 | LR 1.09e-05 | Train loss 0.0611 | Val loss 0.0667 | mIoU 0.8863 | non_water IoU 0.9744 | water IoU 0.7982
+Epoch 049/50 | LR 4.87e-06 | Train loss 0.0756 | Val loss 0.0655 | mIoU 0.8893 | non_water IoU 0.9750 | water IoU 0.8037
+Epoch 050/50 | LR 1.22e-06 | Train loss 0.0782 | Val loss 0.0672 | mIoU 0.8835 | non_water IoU 0.9739 | water IoU 0.7930

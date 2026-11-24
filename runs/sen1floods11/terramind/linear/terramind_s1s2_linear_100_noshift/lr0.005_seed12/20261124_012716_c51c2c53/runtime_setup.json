@@ -1,0 +1,298 @@
+{
+  "experiment": {
+    "name": "terramind_s1s2_linear_100_noshift_lr0.005_seed12",
+    "seed": 12
+  },
+  "paths": {
+    "pretrained_checkpoint": "pretrained_models/TerraMind_v1_large.pt",
+    "splits": {
+      "train": "data/sen1floods11/splits/all_hand_labels/flood_train_data.csv",
+      "val": "data/sen1floods11/splits/all_hand_labels/flood_valid_data.csv"
+    },
+    "run_directory": "runs\\sen1floods11\\terramind\\linear\\terramind_s1s2_linear_100_noshift\\lr0.005_seed12\\20261124_012716_c51c2c53"
+  },
+  "training_settings": {
+    "epochs": 50,
+    "validate_every": 1
+  },
+  "environment": {
+    "python": "3.12.10",
+    "torch": "2.14.0+cu130",
+    "cuda_runtime": "13.0",
+    "device": "cuda",
+    "gpu": "NVIDIA GeForce RTX 3070"
+  },
+  "data": {
+    "train": {
+      "dataset_class": "src.data.datasets.sen1floods11.Sen1Floods11Dataset",
+      "samples": 251,
+      "batches": 32,
+      "batch_size": 8,
+      "num_workers": 0,
+      "drop_last": false,
+      "sampler": "torch.utils.data.sampler.RandomSampler",
+      "modalities": [
+        "sar",
+        "optical"
+      ],
+      "transform": "utils.TrainingPreprocess",
+      "crop_size": 128,
+      "excluded_all_ignore_chips": [
+        "Ghana_26376"
+      ],
+      "crop_sampling": "uniform_valid_windows_v1; 32 retries then exact valid-window sampling",
+      "loader_seed": 15
+    },
+    "val": {
+      "dataset_class": "src.data.datasets.sen1floods11.Sen1Floods11Dataset",
+      "samples": 89,
+      "batches": 89,
+      "batch_size": 1,
+      "num_workers": 0,
+      "drop_last": false,
+      "sampler": "torch.utils.data.sampler.SequentialSampler",
+      "modalities": [
+        "sar",
+        "optical"
+      ],
+      "transform": "src.data.preprocessing.NormalizeFromStats",
+      "crop_size": null,
+      "excluded_all_ignore_chips": [],
+      "crop_sampling": null,
+      "loader_seed": 16
+    }
+  },
+  "normalization": {
+    "class": "src.data.preprocessing.NormalizeFromStats",
+    "method": "zscore",
+    "band_indices": {
+      "sar": [
+        0,
+        1
+      ],
+      "optical": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    "use_8_bit": false,
+    "statistics": {
+      "sar": {
+        "mean": [
+          -12.599,
+          -20.293
+        ],
+        "std": [
+          5.195,
+          5.89
+        ]
+      },
+      "optical": {
+        "mean": [
+          2357.089,
+          2137.385,
+          2018.788,
+          2082.986,
+          2295.651,
+          2854.537,
+          3122.849,
+          3040.56,
+          3306.481,
+          1473.847,
+          506.07,
+          2472.825,
+          1838.929
+        ],
+        "std": [
+          1624.683,
+          1675.806,
+          1557.708,
+          1833.702,
+          1823.738,
+          1733.977,
+          1732.131,
+          1679.732,
+          1727.26,
+          1024.687,
+          442.165,
+          1331.411,
+          1160.419
+        ]
+      }
+    }
+  },
+  "model": {
+    "class": "src.models.dense_prediction.DensePredictionModel",
+    "parameters": 305927170,
+    "trainable_parameters": 2050,
+    "name": "terramind_v1_large",
+    "initialization": "pretrained",
+    "encoder": {
+      "class": "src.encoders.terramind.terramind.TerraMindEncoder",
+      "parameters": 305925120,
+      "trainable_parameters": 0
+    },
+    "backbone_class": "terratorch.models.backbones.terramind.model.terramind_vit.TerraMindViT",
+    "adapter": {
+      "class": "src.adapters.token_to_spatial.TokenToSpatial",
+      "parameters": 0,
+      "trainable_parameters": 0,
+      "structure": "TokenToSpatial()"
+    },
+    "head": {
+      "class": "src.heads.linear.LinearSegmentationHead",
+      "parameters": 2050,
+      "trainable_parameters": 2050,
+      "structure": "LinearSegmentationHead(\n  (classifier): Conv2d(1024, 2, kernel_size=(1, 1), stride=(1, 1))\n)"
+    },
+    "submodules": {
+      "encoder": {
+        "class": "src.encoders.terramind.terramind.TerraMindEncoder",
+        "parameters": 305925120,
+        "trainable_parameters": 0
+      },
+      "adapter": {
+        "class": "src.adapters.token_to_spatial.TokenToSpatial",
+        "parameters": 0,
+        "trainable_parameters": 0
+      },
+      "head": {
+        "class": "src.heads.linear.LinearSegmentationHead",
+        "parameters": 2050,
+        "trainable_parameters": 2050
+      }
+    },
+    "native_modality": null,
+    "native_modalities": [
+      "S1GRD",
+      "S2L1C"
+    ],
+    "input_mapping": {
+      "sar": "S1GRD",
+      "optical": "S2L1C"
+    },
+    "merge_method": "mean",
+    "input_channels": null,
+    "modalities": [
+      "sar",
+      "optical"
+    ],
+    "num_classes": 2,
+    "trainable_parameter_names": [
+      "head.classifier.weight",
+      "head.classifier.bias"
+    ]
+  },
+  "loss": {
+    "class": "torch.nn.modules.loss.CrossEntropyLoss",
+    "structure": "CrossEntropyLoss()",
+    "reduction": "mean",
+    "ignore_index": 255,
+    "class_weights": null
+  },
+  "optimizer": {
+    "class": "torch.optim.adamw.AdamW",
+    "groups": [
+      {
+        "lr": 0.0005,
+        "betas": [
+          0.9,
+          0.999
+        ],
+        "eps": 1e-08,
+        "weight_decay": 0.01,
+        "amsgrad": false,
+        "maximize": false,
+        "foreach": null,
+        "capturable": false,
+        "differentiable": false,
+        "fused": null,
+        "decoupled_weight_decay": true,
+        "initial_lr": 0.005
+      }
+    ]
+  },
+  "scheduler": {
+    "class": "torch.optim.lr_scheduler.SequentialLR",
+    "state": {
+      "_milestones": [
+        160
+      ],
+      "last_epoch": 0,
+      "_last_lr": [
+        0.0005
+      ],
+      "_schedulers": [
+        {
+          "start_factor": 0.1,
+          "end_factor": 1.0,
+          "total_iters": 160,
+          "base_lrs": [
+            0.005
+          ],
+          "last_epoch": 0,
+          "_step_count": 1,
+          "_is_initial": false,
+          "_get_lr_called_within_step": false,
+          "_last_lr": [
+            0.0005
+          ]
+        },
+        {
+          "T_max": 1440,
+          "eta_min": 0.0,
+          "base_lrs": [
+            0.005
+          ],
+          "last_epoch": -1,
+          "_step_count": 1,
+          "_is_initial": false,
+          "_get_lr_called_within_step": false,
+          "_last_lr": [
+            0.0005
+          ]
+        }
+      ]
+    },
+    "last_epoch": 0
+  },
+  "random_seeds": {
+    "model": 12,
+    "shuffle": 13,
+    "crops": 14,
+    "train_loader": 15,
+    "val_loader": 16,
+    "test_loader": 17,
+    "bolivia_loader": 18
+  },
+  "evaluation_options": {
+    "aw_pw_fw": true,
+    "batch_size": 1,
+    "tile_size": 128,
+    "stride": 85,
+    "tile_batch_size": 8,
+    "class_names": [
+      "non_water",
+      "water"
+    ],
+    "return_per_sample": true,
+    "sample_id_key": "chip_id",
+    "checkpoint_metric": "miou"
+  },
+  "sanity_checks": {
+    "optimizer_matches_trainable_parameters": true,
+    "has_trainable_parameters": true,
+    "requested_frozen_encoder_is_frozen": true
+  }
+}
