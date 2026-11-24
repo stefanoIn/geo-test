@@ -27,6 +27,38 @@ def centres(coords):
 
 
 class EnrichmentTests(unittest.TestCase):
+    def test_vectorized_unique_matches_preserve_fields(self):
+        r = regions([box(0,0,1,1)])
+        r.loc[0, 'REALM'] = None
+        r.index = [57]
+        frame = centres([(.123456789012345, .5), (0., .5), (4., 4.)])
+        frame.index = [10, 20, 30]
+        result = assign_centres(frame, r)
+        pd.testing.assert_frame_equal(result[list(frame)], frame.reset_index(drop=True), check_exact=True)
+        self.assertEqual(list(result.assignment_status), ['classified', 'boundary', 'unmatched'])
+        self.assertEqual(list(result.matched_ecoregion_ids), ['[1]', '[1]', '[]'])
+        self.assertTrue(result.realm.isna().all())
+        self.assertEqual(str(result.ecoregion_id.dtype), 'Int64')
+        for frame in [centres([]), centres([(float('nan'), 0), (181, 0)])]:
+            result = assign_centres(frame, r)
+            self.assertTrue((result.assignment_status == 'invalid_coordinates').all())
+            self.assertTrue(result.ecoregion_id.isna().all())
+
+    def test_vectorized_predicate_error_semantics(self):
+        import shapely
+        from geography.enrichment import _assign
+        r = regions([box(0,0,1,1)])
+        tree = shapely.STRtree(r.geometry)
+        frame = centres([(.5,.5)])
+        for predicate, ids in [('covers', '[]'), ('touches', '[1]')]:
+            with patch('shapely.' + predicate, side_effect=shapely.errors.GEOSException('diagnostic failure')):
+                result = _assign(frame, r, tree, tolerate_errors=True)
+                self.assertEqual(result.assignment_status.iloc[0], 'predicate_error')
+                self.assertEqual(result.matched_ecoregion_ids.iloc[0], ids)
+                self.assertTrue(pd.isna(result.ecoregion_id.iloc[0]))
+                with self.assertRaises(shapely.errors.GEOSException):
+                    _assign(frame, r, tree)
+
     def test_boundaries_missing_and_ambiguity(self):
         r = regions([box(0,0,1,1), box(1,0,2,1)])
         result = assign_centres(centres([(.5,.5),(1,.5),(0,.5),(5,5),(float('nan'),1),(181,1)]), r)

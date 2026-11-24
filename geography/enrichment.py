@@ -194,51 +194,83 @@ def _assign(frame, regions, tree, tolerate_errors=False):
     positions = np.flatnonzero(valid)
     points = shapely.points(lon[valid], lat[valid])
     candidates = tree.query(points)
-    matches = {int(i): [] for i in range(len(points))}
-    failed = set()
+    geometries = regions.geometry.to_numpy()
+    classified = classified_regions(regions).to_numpy()
+    attributes = {
+        key: pd.array([pd.NA if pd.isna(value) else int(value) if key.endswith('_id') else str(value)
+                       for value in regions[column]],
+                      dtype='Int64' if key.endswith('_id') else 'string')
+        for key, column in FIELDS.items()
+    }
+    single_ids = np.array([json.dumps([int(value)]) for value in regions.ECO_ID], dtype=object)
+    failed = np.zeros(len(points), dtype=bool)
     if not tolerate_errors:
-        hits = shapely.covers(regions.geometry.to_numpy()[candidates[1]], points[candidates[0]])
-        for i, j in candidates[:, hits].T:
-            matches[int(i)].append(int(j))
+        hits = shapely.covers(geometries[candidates[1]], points[candidates[0]])
     else:
-        for i, j in candidates.T:
+        # Invalid-original diagnostics isolate predicate failures per candidate.
+        hits = np.zeros(candidates.shape[1], dtype=bool)
+        for k, (i, j) in enumerate(candidates.T):
             try:
-                if regions.geometry.iloc[j].covers(points[i]):
-                    matches[int(i)].append(int(j))
+                hits[k] = geometries[j].covers(points[i])
             except shapely.errors.GEOSException:
-                failed.add(int(i))
-    for i, position in enumerate(positions):
-        if i in failed:
-            result.at[position, 'assignment_status'] = 'predicate_error'
+                failed[i] = True
+    point_ids, region_ids = candidates[:, hits]
+    keep = ~failed[point_ids]
+    point_ids, region_ids = point_ids[keep], region_ids[keep]
+    counts = np.bincount(point_ids, minlength=len(points))
+    result.loc[positions, 'assignment_status'] = 'unmatched'
+    result.loc[positions[failed], 'assignment_status'] = 'predicate_error'
+
+    unique = counts[point_ids] == 1
+    pi, ri = point_ids[unique], region_ids[unique]
+    destination = positions[pi]
+    result.loc[destination, 'matched_ecoregion_ids'] = single_ids[ri]
+    try:
+        boundary = shapely.touches(geometries[ri], points[pi])
+        boundary_failed = np.zeros(len(pi), dtype=bool)
+    except shapely.errors.GEOSException:
+        if not tolerate_errors:
+            raise
+        boundary = np.zeros(len(pi), dtype=bool)
+        boundary_failed = np.zeros(len(pi), dtype=bool)
+        for k, (i, j) in enumerate(zip(pi, ri)):
+            try:
+                boundary[k] = geometries[j].touches(points[i])
+            except shapely.errors.GEOSException:
+                boundary_failed[k] = True
+    statuses = np.where(~classified[ri], 'unclassified', np.where(boundary, 'boundary', 'classified')).astype(object)
+    statuses[boundary_failed] = 'predicate_error'
+    result.loc[destination, 'assignment_status'] = statuses
+    for key, values in attributes.items():
+        result.loc[destination[~boundary_failed], key] = values.take(ri[~boundary_failed])
+
+    # Only ambiguous matches need group-level decisions and sorted ID lists.
+    multiple = counts[point_ids] > 1
+    mpi, mri = point_ids[multiple], region_ids[multiple]
+    order = np.argsort(mpi, kind='stable')
+    mpi, mri = mpi[order], mri[order]
+    starts = np.r_[0, np.flatnonzero(np.diff(mpi)) + 1, len(mpi)]
+    for start, end in zip(starts[:-1], starts[1:]):
+        if start == end:
             continue
-        ids = matches[i]
-        if not ids:
-            result.at[position, 'assignment_status'] = 'unmatched'
-            continue
+        i = mpi[start]
+        position = positions[i]
+        ids = mri[start:end]
         group = regions.iloc[ids]
         result.at[position, 'matched_ecoregion_ids'] = json.dumps(sorted(int(v) for v in group.ECO_ID))
         try:
-            boundary = [g.touches(points[i]) for g in group.geometry]
+            boundary = shapely.touches(geometries[ids], points[i])
         except shapely.errors.GEOSException:
             if not tolerate_errors:
                 raise
             result.at[position, 'assignment_status'] = 'predicate_error'
             continue
-        classified = classified_regions(group)
-        if len(ids) == 1:
-            status = 'unclassified' if not classified.iloc[0] else 'boundary' if boundary[0] else 'classified'
-            for key, column in FIELDS.items():
-                value = group.iloc[0][column]
-                if not pd.isna(value):
-                    result.at[position, key] = int(value) if key.endswith('_id') else str(value)
-        else:
-            status = 'shared_boundary' if all(boundary) else 'multiple_matches'
-            if classified.all() and group.BIOME_NUM.nunique() == 1:
-                for key in ['biome_id', 'biome_name', 'biome_color']:
-                    value = group.iloc[0][FIELDS[key]]
-                    result.at[position, key] = int(value) if key.endswith('_id') else str(value)
-            if group.REALM.nunique(dropna=False) == 1 and pd.notna(group.REALM.iloc[0]):
-                result.at[position, 'realm'] = str(group.REALM.iloc[0])
+        status = 'shared_boundary' if boundary.all() else 'multiple_matches'
+        if classified[ids].all() and group.BIOME_NUM.nunique() == 1:
+            for key in ['biome_id', 'biome_name', 'biome_color']:
+                result.at[position, key] = attributes[key][ids[0]]
+        if group.REALM.nunique(dropna=False) == 1 and pd.notna(group.REALM.iloc[0]):
+            result.at[position, 'realm'] = attributes['realm'][ids[0]]
         result.at[position, 'assignment_status'] = status
     result['assignment_status'] = pd.Categorical(result.assignment_status, categories=STATUSES)
     return result
