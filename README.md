@@ -16,7 +16,7 @@ The current experiments focus on **water segmentation with the hand-labelled Sen
 | Supervised baselines | U-Net and ResNet U-Net |
 | Inputs | Sentinel-1 SAR, Sentinel-2 optical, or paired SAR/optical |
 | Execution | Training, evaluation only, checkpoint resume and sequential batch runs |
-| Supporting analysis | Crop diagnostics, evaluation timing and geographical pretraining exposure |
+| Supporting analysis | Crop diagnostics and evaluation timing |
 
 The model wrappers expose more options than have been experimentally benchmarked. The recent tuning configurations use frozen Large GeoFM encoders with linear heads, and fully trained U-Net/ResNet-18 U-Net baselines on S1+S2. Regression, change detection and additional datasets are future extensions.
 
@@ -89,11 +89,13 @@ For Sen1Floods11, `evaluation.aw_pw_fw: true` adds all-water (AW), permanent-wat
 
 Ignored pixels are excluded. Entirely ignored chips are excluded from per-chip averages. The AW/PW/FW implementation retains background, masks the other water category, and applies category-specific chip inclusion rules. Valid empty unions score 1 in the per-chip calculation. Report these conventions when comparing results with other implementations; PW and FW averages do not generally average to AW.
 
-## Geographical pretraining exposure
+## Companion geographical analysis
 
-The standalone study compares Sen1Floods11 footprints with CROMA's SSL4EO-S12 locations and TerraMind's TerraMesh metadata. It produces per-chip overlap/proximity summaries and local maps.
-
-CROMA footprints are reconstructed approximations. Geographical exposure does not establish that a model saw the same acquisition or labels, nor prove downstream data leakage. The output provenance records the analysis assumptions and limitations.
+Geographical metadata enrichment, ecological characterisation and pretraining
+exposure analysis are maintained separately in **GeoTest-Atlas** (local companion:
+`../geotest-atlas`; see its `RUNNING.md`). GeoTest training and evaluation do not
+import that package. Existing local geographical data and archived results remain
+available; this separation does not change model experiments.
 
 ## Development status
 
