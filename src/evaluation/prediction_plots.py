@@ -4,11 +4,15 @@ from pathlib import Path
 import re
 
 import numpy as np
+from src.plotting import scientific_style, save_figure, optional_plot
 
 
+@optional_plot
+@scientific_style()
 def save_prediction_plot(directory, sample_id, target, prediction, num_classes,
-                         ignore_index=255, class_names=None, index=0):
-    """Write one PNG; ignore pixels are excluded from the error map."""
+                         ignore_index=255, class_names=None, index=0, *, show_titles=True,
+                         figsize=(7.2, 3.2), legend_loc='upper center', legend_ncol=2):
+    """Write PNG/PDF; ignore pixels are excluded from the error map."""
     import matplotlib
     from matplotlib.figure import Figure
     from matplotlib.backends.backend_agg import FigureCanvasAgg
@@ -38,27 +42,28 @@ def save_prediction_plot(directory, sample_id, target, prediction, num_classes,
         error_colors = ["#e5e9ed", "#e55764", "#c5c7cb"]
         error_names = ["Correct", "Incorrect", "Ignored"]
     errors[~valid] = len(error_colors) - 1
-    figure = Figure(figsize=(12, 4.8))
+    figure = Figure(figsize=figsize)
     FigureCanvasAgg(figure)
     axes = figure.subplots(1, 3)
     for ax, array, title in zip(axes[:2], [target, prediction], ["Ground truth", "Prediction"]):
         ax.imshow(np.ma.array(array, mask=~valid), cmap=cmap, norm=norm, interpolation="nearest")
-        ax.set_title(title)
+        ax.set_title(title if show_titles else "")
     axes[2].imshow(errors, cmap=ListedColormap(error_colors), vmin=0,
                    vmax=len(error_colors)-1, interpolation="nearest")
-    axes[2].set_title("Errors (valid labels only)")
+    axes[2].set_title("Errors (valid labels only)" if show_titles else "")
     for ax in axes:
         ax.set_axis_off()
     axes[0].legend(handles=[Patch(color=c, label=n) for c, n in zip(colors, names)] +
-                   [Patch(color="#c5c7cb", label="Ignored")], loc="upper center",
-                   bbox_to_anchor=(0.5, 0), fontsize=8, ncol=2)
+                   [Patch(color="#c5c7cb", label="Ignored")], loc=legend_loc,
+                   bbox_to_anchor=(0.5, 0), fontsize=8, ncol=legend_ncol)
     axes[2].legend(handles=[Patch(color=c, label=n) for c, n in zip(error_colors, error_names)],
-                   loc="upper center", bbox_to_anchor=(0.5, 0), fontsize=8, ncol=2)
-    figure.suptitle(str(sample_id) + (" | No valid labels" if not valid.any() else ""))
+                   loc=legend_loc, bbox_to_anchor=(0.5, 0), fontsize=8, ncol=legend_ncol)
+    if show_titles:
+        figure.suptitle(str(sample_id) + (" | No valid labels" if not valid.any() else ""))
     figure.tight_layout(rect=(0, 0.08, 1, 0.95))
     # Index prevents filename collisions even after sanitizing external chip IDs.
     safe_id = re.sub(r"[^a-zA-Z0-9_.-]", "_", str(sample_id))[:100]
     path = directory / f"{index:06d}_{safe_id}.png"
-    figure.savefig(path, dpi=150)
+    save_figure(figure, path)
     figure.clear()
     return path

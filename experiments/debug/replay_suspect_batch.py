@@ -185,14 +185,16 @@ def _execute(source, output, config, setup, device):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    fig,axes=plt.subplots(1,2,figsize=(12,4))
-    for branch in summary['branches']:
-        curve=json.loads((output/f'{branch}_curve.json').read_text())
-        axes[0].plot([r['batch'] for r in curve],[100*r['miou'] for r in curve],marker='o',label=branch)
-        axes[1].plot([r['batch'] for r in curve],[100*r['recall_per_class'][1] for r in curve],marker='o',label=branch)
-    for ax,title in zip(axes,['Fixed validation probe mIoU (%)','Fixed validation probe water recall (%)']):
-        ax.axvline(114,color='grey',linestyle='--');ax.set(title=title,xlabel='Epoch 8 batch');ax.legend();ax.grid(alpha=.2)
-    fig.tight_layout();fig.savefig(output/'comparison.png',dpi=160);plt.close(fig)
+    from src.plotting import scientific_style, save_figure
+    with scientific_style():
+        fig,axes=plt.subplots(1,2,figsize=(12,4))
+        for branch in summary['branches']:
+            curve=json.loads((output/f'{branch}_curve.json').read_text())
+            axes[0].plot([r['batch'] for r in curve],[100*r['miou'] for r in curve],marker='o',label=branch)
+            axes[1].plot([r['batch'] for r in curve],[100*r['recall_per_class'][1] for r in curve],marker='o',label=branch)
+        for ax,title in zip(axes,['Fixed validation probe mIoU (%)','Fixed validation probe water recall (%)']):
+            ax.axvline(114,color='grey',linestyle='--');ax.set(title=title,xlabel='Epoch 8 batch');ax.legend();ax.grid(alpha=.2)
+        fig.tight_layout();save_figure(fig, output/'comparison.png');plt.close(fig)
     write_json(output/'completion.json',{'completed':True})
     return output
 

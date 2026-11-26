@@ -19,13 +19,14 @@ from src.models.factory import build_model
 from src.evaluation.evaluator import evaluate, save_evaluation_report
 from training.trainer import train_one_epoch
 from training.checkpoints import save_checkpoint, load_checkpoint
+from src.plotting import save_training_plots, save_test_plots
 from utils import (
     capture_run_output, report_runtime_setup, report_first_training_batch,
     load_config, build_dataset, build_preprocessing, build_loaders,
     experiment_random_seeds, is_supervised_baseline, log_training_crops,
     capture_rng_state, restore_rng_state,
     build_loss, build_optimizer, build_scheduler, file_sha256, write_json,
-    build_run_summary, save_training_plots, save_test_plots, format_iou_metrics,
+    build_run_summary, format_iou_metrics,
 )
 
 # Select the experiment here; paths are relative to the project folder.

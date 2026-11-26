@@ -33,8 +33,9 @@ from src.evaluation import evaluator as ev
 from src.evaluation.metrics import SegmentationMetrics, WaterCategoryMetrics
 from training.checkpoints import load_checkpoint, save_checkpoint
 from training.trainer import train_one_epoch
+from src.plotting import save_training_plots
 from utils import (build_dataset, build_loaders, build_loss, build_optimizer,
-                   build_scheduler, file_sha256, write_json, save_training_plots,
+                   build_scheduler, file_sha256, write_json,
                    capture_run_output, log_training_crops)
 
 DEFAULT_RUN = ("runs/sen1floods11/croma/linear_tuning/s1s2/"

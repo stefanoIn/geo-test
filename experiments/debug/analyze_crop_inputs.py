@@ -92,33 +92,35 @@ def save_outputs(run_dir, records):
     with (output / "epoch_summary.csv").open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(summary[0]))
         writer.writeheader(); writer.writerows(summary)
-    fig, axes = plt.subplots(len(modalities), 1, figsize=(12, 3 * len(modalities)), squeeze=False)
-    for ax, m in zip(axes[:, 0], modalities):
+    from src.plotting import scientific_style, save_figure
+    with scientific_style():
+        fig, axes = plt.subplots(len(modalities), 1, figsize=(12, 3 * len(modalities)), squeeze=False)
+        for ax, m in zip(axes[:, 0], modalities):
+            for e in epochs:
+                rr = [r for r in records if r["epoch"] == e]
+                batches = sorted({r["batch"] for r in rr})
+                ax.plot(batches, [max(r[m]["abs_z_max"] for r in rr if r["batch"] == b) for b in batches], label=f"Epoch {e}")
+            ax.set(xlabel="Training batch", ylabel="Maximum absolute normalized value", title=m)
+            ax.legend(); ax.grid(alpha=.2)
+        fig.tight_layout(); save_figure(fig, output / "batch_extremes.png"); plt.close(fig)
+        cmap = ListedColormap(["#263440", "#20b9d2"]); cmap.set_bad("#c5c7cb")
         for e in epochs:
-            rr = [r for r in records if r["epoch"] == e]
-            batches = sorted({r["batch"] for r in rr})
-            ax.plot(batches, [max(r[m]["abs_z_max"] for r in rr if r["batch"] == b) for b in batches], label=f"Epoch {e}")
-        ax.set(xlabel="Training batch", ylabel="Maximum absolute normalized value", title=m)
-        ax.legend(); ax.grid(alpha=.2)
-    fig.tight_layout(); fig.savefig(output / "batch_extremes.png", dpi=150); plt.close(fig)
-    cmap = ListedColormap(["#263440", "#20b9d2"]); cmap.set_bad("#c5c7cb")
-    for e in epochs:
-        tail = [r for r in records if r["epoch"] == e][-6:]
-        fig, axes = plt.subplots(len(tail), 3, figsize=(10, 3 * len(tail)), squeeze=False)
-        for axs, r in zip(axes, tail):
-            rgb = read_crop(r, "S2Hand")[[3, 2, 1]].transpose(1, 2, 0)
-            axs[0].imshow(np.nan_to_num(np.clip(rgb / 3000, 0, 1)))
-            axs[0].set_title(f"{r['chip_id']} | batch {r['batch']}\nRGB /3000 (display only)", fontsize=9)
-            vh = read_crop(r, "S1Hand")[1]
-            axs[1].imshow(vh, cmap="gray", vmin=-30, vmax=0)
-            axs[1].set_title("VH: -30 to 0 dB")
-            mask = read_crop(r, "LabelHand", masked=False)[0]
-            axs[2].imshow(np.ma.masked_where((mask == -1) | (mask == 255), mask), cmap=cmap, vmin=0, vmax=1, interpolation="nearest")
-            c = r["crop"]
-            axs[2].set_title(f"Label | top={c['top']}, left={c['left']}\nWater=cyan; land=dark; ignored=grey", fontsize=9)
-            for ax in axs: ax.axis("off")
-        fig.suptitle(f"Epoch {e}: final three training batches (exact logged crops)")
-        fig.tight_layout(rect=(0, 0, 1, .98)); fig.savefig(output / f"epoch_{e:02d}_last_batches.png", dpi=140); plt.close(fig)
+            tail = [r for r in records if r["epoch"] == e][-6:]
+            fig, axes = plt.subplots(len(tail), 3, figsize=(10, 3 * len(tail)), squeeze=False)
+            for axs, r in zip(axes, tail):
+                rgb = read_crop(r, "S2Hand")[[3, 2, 1]].transpose(1, 2, 0)
+                axs[0].imshow(np.nan_to_num(np.clip(rgb / 3000, 0, 1)))
+                axs[0].set_title(f"{r['chip_id']} | batch {r['batch']}\nRGB /3000 (display only)", fontsize=9)
+                vh = read_crop(r, "S1Hand")[1]
+                axs[1].imshow(vh, cmap="gray", vmin=-30, vmax=0)
+                axs[1].set_title("VH: -30 to 0 dB")
+                mask = read_crop(r, "LabelHand", masked=False)[0]
+                axs[2].imshow(np.ma.masked_where((mask == -1) | (mask == 255), mask), cmap=cmap, vmin=0, vmax=1, interpolation="nearest")
+                c = r["crop"]
+                axs[2].set_title(f"Label | top={c['top']}, left={c['left']}\nWater=cyan; land=dark; ignored=grey", fontsize=9)
+                for ax in axs: ax.axis("off")
+            fig.suptitle(f"Epoch {e}: final three training batches (exact logged crops)")
+            fig.tight_layout(rect=(0, 0, 1, .98)); save_figure(fig, output / f"epoch_{e:02d}_last_batches.png"); plt.close(fig)
     print(f"Saved analysis to {output}", flush=True)
     return output
 
