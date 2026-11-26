@@ -92,7 +92,7 @@ def save_outputs(run_dir, records):
     with (output / "epoch_summary.csv").open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(summary[0]))
         writer.writeheader(); writer.writerows(summary)
-    from src.plotting import scientific_style, save_figure
+    from src.plotting import scientific_style, save_figure, compact_legend_layout
     with scientific_style():
         fig, axes = plt.subplots(len(modalities), 1, figsize=(12, 3 * len(modalities)), squeeze=False)
         for ax, m in zip(axes[:, 0], modalities):
@@ -101,8 +101,11 @@ def save_outputs(run_dir, records):
                 batches = sorted({r["batch"] for r in rr})
                 ax.plot(batches, [max(r[m]["abs_z_max"] for r in rr if r["batch"] == b) for b in batches], label=f"Epoch {e}")
             ax.set(xlabel="Training batch", ylabel="Maximum absolute normalized value", title=m)
-            ax.legend(); ax.grid(alpha=.2)
-        fig.tight_layout(); save_figure(fig, output / "batch_extremes.png"); plt.close(fig)
+            ax.legend(loc="upper center", bbox_to_anchor=(.5, -.22), ncol=3)
+            ax.minorticks_on()
+            ax.grid(True, which="major")
+            ax.grid(False, which="minor")
+        compact_legend_layout(fig); save_figure(fig, output / "batch_extremes.png", bbox_inches="tight"); plt.close(fig)
         cmap = ListedColormap(["#263440", "#20b9d2"]); cmap.set_bad("#c5c7cb")
         for e in epochs:
             tail = [r for r in records if r["epoch"] == e][-6:]

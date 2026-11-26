@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 
 import numpy as np
-from src.plotting import scientific_style, save_figure, optional_plot
+from src.plotting import scientific_style, save_figure, optional_plot, compact_legend_layout
 
 
 @optional_plot
@@ -60,10 +60,10 @@ def save_prediction_plot(directory, sample_id, target, prediction, num_classes,
                    loc=legend_loc, bbox_to_anchor=(0.5, 0), fontsize=8, ncol=legend_ncol)
     if show_titles:
         figure.suptitle(str(sample_id) + (" | No valid labels" if not valid.any() else ""))
-    figure.tight_layout(rect=(0, 0.08, 1, 0.95))
+    compact_legend_layout(figure)
     # Index prevents filename collisions even after sanitizing external chip IDs.
     safe_id = re.sub(r"[^a-zA-Z0-9_.-]", "_", str(sample_id))[:100]
     path = directory / f"{index:06d}_{safe_id}.png"
-    save_figure(figure, path)
+    save_figure(figure, path, bbox_inches="tight")
     figure.clear()
     return path

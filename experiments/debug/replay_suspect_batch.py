@@ -185,16 +185,17 @@ def _execute(source, output, config, setup, device):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from src.plotting import scientific_style, save_figure
+    from src.plotting import scientific_style, save_figure, compact_legend_layout
     with scientific_style():
         fig,axes=plt.subplots(1,2,figsize=(12,4))
         for branch in summary['branches']:
             curve=json.loads((output/f'{branch}_curve.json').read_text())
-            axes[0].plot([r['batch'] for r in curve],[100*r['miou'] for r in curve],marker='o',label=branch)
-            axes[1].plot([r['batch'] for r in curve],[100*r['recall_per_class'][1] for r in curve],marker='o',label=branch)
+            axes[0].plot([r['batch'] for r in curve],[100*r['miou'] for r in curve],marker='',label=branch)
+            axes[1].plot([r['batch'] for r in curve],[100*r['recall_per_class'][1] for r in curve],marker='',label=branch)
         for ax,title in zip(axes,['Fixed validation probe mIoU (%)','Fixed validation probe water recall (%)']):
-            ax.axvline(114,color='grey',linestyle='--');ax.set(title=title,xlabel='Epoch 8 batch');ax.legend();ax.grid(alpha=.2)
-        fig.tight_layout();save_figure(fig, output/'comparison.png');plt.close(fig)
+            ax.axvline(114,color='grey',linestyle='--');ax.set(title=title,xlabel='Epoch 8 batch');ax.legend(loc='upper center',bbox_to_anchor=(.5,-.2),ncol=3)
+            ax.minorticks_on();ax.grid(True,which='major');ax.grid(False,which='minor')
+        compact_legend_layout(fig);save_figure(fig, output/'comparison.png', bbox_inches='tight');plt.close(fig)
     write_json(output/'completion.json',{'completed':True})
     return output
 

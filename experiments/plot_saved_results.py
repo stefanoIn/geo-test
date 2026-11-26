@@ -14,8 +14,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--no-titles", action="store_true")
-    parser.add_argument("--legend-loc", default="best")
-    parser.add_argument("--legend-columns", type=int, default=1)
+    parser.add_argument("--legend-loc", default="lower center")
+    parser.add_argument("--legend-columns", type=int, default=3)
     args = parser.parse_args()
     root = args.run_dir
     config = yaml.safe_load((root / "config.yaml").read_text(encoding="utf-8"))
