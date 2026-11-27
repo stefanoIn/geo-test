@@ -1,0 +1,193 @@
+{
+  "dataset": "sen1floods11",
+  "split": "test",
+  "sample_ids": [
+    "USA_67102",
+    "India_80221",
+    "USA_670826",
+    "Ghana_359826",
+    "Paraguay_80102"
+  ],
+  "selection": "random_common",
+  "selection_seed": 12,
+  "rgb_displayed": true,
+  "rgb_bands": [
+    4,
+    3,
+    2
+  ],
+  "rgb_sources": {
+    "USA_67102": {
+      "path": "d:\\UNI\\GeoTest\\data\\sen1floods11\\HandLabeled\\S2Hand\\USA_67102_S2Hand.tif",
+      "bands": [
+        4,
+        3,
+        2
+      ],
+      "alignment_checked": true
+    },
+    "India_80221": {
+      "path": "d:\\UNI\\GeoTest\\data\\sen1floods11\\HandLabeled\\S2Hand\\India_80221_S2Hand.tif",
+      "bands": [
+        4,
+        3,
+        2
+      ],
+      "alignment_checked": true
+    },
+    "USA_670826": {
+      "path": "d:\\UNI\\GeoTest\\data\\sen1floods11\\HandLabeled\\S2Hand\\USA_670826_S2Hand.tif",
+      "bands": [
+        4,
+        3,
+        2
+      ],
+      "alignment_checked": true
+    },
+    "Ghana_359826": {
+      "path": "d:\\UNI\\GeoTest\\data\\sen1floods11\\HandLabeled\\S2Hand\\Ghana_359826_S2Hand.tif",
+      "bands": [
+        4,
+        3,
+        2
+      ],
+      "alignment_checked": true
+    },
+    "Paraguay_80102": {
+      "path": "d:\\UNI\\GeoTest\\data\\sen1floods11\\HandLabeled\\S2Hand\\Paraguay_80102_S2Hand.tif",
+      "bands": [
+        4,
+        3,
+        2
+      ],
+      "alignment_checked": true
+    }
+  },
+  "display_metrics": [
+    "miou",
+    "water_iou"
+  ],
+  "water_class_id": 1,
+  "runs": [
+    {
+      "label": "CROMA",
+      "directory": "d:\\UNI\\GeoTest\\runs\\sen1floods11\\croma\\linear\\croma_s1s2_linear_100_noshift\\lr0.003_seed12\\20261124_024245_a9568fd2\\evaluations\\20261127_145628_4d9395b4",
+      "metadata": {
+        "format": "compressed numpy npz",
+        "arrays": [
+          "prediction",
+          "target",
+          "sample_id"
+        ],
+        "source_run": "runs\\sen1floods11\\croma\\linear\\croma_s1s2_linear_100_noshift\\lr0.003_seed12\\20261124_024245_a9568fd2",
+        "evaluation_run": "runs\\sen1floods11\\croma\\linear\\croma_s1s2_linear_100_noshift\\lr0.003_seed12\\20261124_024245_a9568fd2\\evaluations\\20261127_145628_4d9395b4",
+        "split": "test",
+        "split_csv": "data/sen1floods11/splits/all_hand_labels/flood_test_data.csv",
+        "split_sha256": "8b598c9438042f3ed8aed4484268387fae1aa5b660882e1c5b4c1218eba63d67",
+        "seed": 12,
+        "checkpoint": "runs\\sen1floods11\\croma\\linear\\croma_s1s2_linear_100_noshift\\lr0.003_seed12\\20261124_024245_a9568fd2\\checkpoints\\best.pt",
+        "checkpoint_sha256": "809bd9d0d7534d277aed231934e9aa9579672d13b813388083205229a9b93fb2",
+        "selected_epoch": 28,
+        "sample_id_key": "chip_id",
+        "num_classes": 2,
+        "class_mapping": {
+          "0": "non_water",
+          "1": "water"
+        },
+        "ignore_index": 255,
+        "completed": true,
+        "num_samples": 90
+      }
+    },
+    {
+      "label": "TerraMind",
+      "directory": "d:\\UNI\\GeoTest\\runs\\sen1floods11\\terramind\\linear\\terramind_s1s2_linear_100_noshift\\lr0.005_seed12\\20261124_012716_c51c2c53\\evaluations\\20261127_145931_7e5765f4",
+      "metadata": {
+        "format": "compressed numpy npz",
+        "arrays": [
+          "prediction",
+          "target",
+          "sample_id"
+        ],
+        "source_run": "runs\\sen1floods11\\terramind\\linear\\terramind_s1s2_linear_100_noshift\\lr0.005_seed12\\20261124_012716_c51c2c53",
+        "evaluation_run": "runs\\sen1floods11\\terramind\\linear\\terramind_s1s2_linear_100_noshift\\lr0.005_seed12\\20261124_012716_c51c2c53\\evaluations\\20261127_145931_7e5765f4",
+        "split": "test",
+        "split_csv": "data/sen1floods11/splits/all_hand_labels/flood_test_data.csv",
+        "split_sha256": "8b598c9438042f3ed8aed4484268387fae1aa5b660882e1c5b4c1218eba63d67",
+        "seed": 12,
+        "checkpoint": "runs\\sen1floods11\\terramind\\linear\\terramind_s1s2_linear_100_noshift\\lr0.005_seed12\\20261124_012716_c51c2c53\\checkpoints\\best.pt",
+        "checkpoint_sha256": "e2cfe754c40125749a3b736ba565545cda80a4fafd1f21479bbd3988729b8273",
+        "selected_epoch": 41,
+        "sample_id_key": "chip_id",
+        "num_classes": 2,
+        "class_mapping": {
+          "0": "non_water",
+          "1": "water"
+        },
+        "ignore_index": 255,
+        "completed": true,
+        "num_samples": 90
+      }
+    },
+    {
+      "label": "U-Net",
+      "directory": "d:\\UNI\\GeoTest\\runs\\sen1floods11\\baselines\\unet\\unet_s1s2_100_noshift\\lr0.0003_seed12\\20261123_235140_192c3f86\\evaluations\\20261127_150101_ec959812",
+      "metadata": {
+        "format": "compressed numpy npz",
+        "arrays": [
+          "prediction",
+          "target",
+          "sample_id"
+        ],
+        "source_run": "runs\\sen1floods11\\baselines\\unet\\unet_s1s2_100_noshift\\lr0.0003_seed12\\20261123_235140_192c3f86",
+        "evaluation_run": "runs\\sen1floods11\\baselines\\unet\\unet_s1s2_100_noshift\\lr0.0003_seed12\\20261123_235140_192c3f86\\evaluations\\20261127_150101_ec959812",
+        "split": "test",
+        "split_csv": "data/sen1floods11/splits/all_hand_labels/flood_test_data.csv",
+        "split_sha256": "8b598c9438042f3ed8aed4484268387fae1aa5b660882e1c5b4c1218eba63d67",
+        "seed": 12,
+        "checkpoint": "runs\\sen1floods11\\baselines\\unet\\unet_s1s2_100_noshift\\lr0.0003_seed12\\20261123_235140_192c3f86\\checkpoints\\best.pt",
+        "checkpoint_sha256": "8531099fcc32da381b288221827908d4e6e037d776f6b43b08e56d1980ee1cd6",
+        "selected_epoch": 47,
+        "sample_id_key": "chip_id",
+        "num_classes": 2,
+        "class_mapping": {
+          "0": "non_water",
+          "1": "water"
+        },
+        "ignore_index": 255,
+        "completed": true,
+        "num_samples": 90
+      }
+    },
+    {
+      "label": "ResNet-18 U-Net",
+      "directory": "d:\\UNI\\GeoTest\\runs\\sen1floods11\\baselines\\resnet18_unet\\resnet18_unet_s1s2_100_noshift\\lr0.001_seed12\\20261124_004303_3f180faa\\evaluations\\20261127_150132_46d8aea9",
+      "metadata": {
+        "format": "compressed numpy npz",
+        "arrays": [
+          "prediction",
+          "target",
+          "sample_id"
+        ],
+        "source_run": "runs\\sen1floods11\\baselines\\resnet18_unet\\resnet18_unet_s1s2_100_noshift\\lr0.001_seed12\\20261124_004303_3f180faa",
+        "evaluation_run": "runs\\sen1floods11\\baselines\\resnet18_unet\\resnet18_unet_s1s2_100_noshift\\lr0.001_seed12\\20261124_004303_3f180faa\\evaluations\\20261127_150132_46d8aea9",
+        "split": "test",
+        "split_csv": "data/sen1floods11/splits/all_hand_labels/flood_test_data.csv",
+        "split_sha256": "8b598c9438042f3ed8aed4484268387fae1aa5b660882e1c5b4c1218eba63d67",
+        "seed": 12,
+        "checkpoint": "runs\\sen1floods11\\baselines\\resnet18_unet\\resnet18_unet_s1s2_100_noshift\\lr0.001_seed12\\20261124_004303_3f180faa\\checkpoints\\best.pt",
+        "checkpoint_sha256": "741392f484966bffaacf4b44b92da6403bd0c00a3098f0549bb43ce1eb221386",
+        "selected_epoch": 47,
+        "sample_id_key": "chip_id",
+        "num_classes": 2,
+        "class_mapping": {
+          "0": "non_water",
+          "1": "water"
+        },
+        "ignore_index": 255,
+        "completed": true,
+        "num_samples": 90
+      }
+    }
+  ]
+}
