@@ -1,6 +1,5 @@
-Evaluation only | Source: runs\sen1floods11\croma\linear\croma_s1s2_linear_100_noshift\lr0.003_seed12\20261124_024245_a9568fd2 | Output: runs\sen1floods11\croma\linear\croma_s1s2_linear_100_noshift\lr0.003_seed12\20261124_024245_a9568fd2\evaluations\20261124_160329_9fb7c5f2 | Device: cuda
 experiment:
-  name: croma_s1s2_linear_100_noshift_lr0.003_seed12
+  name: resnet18_unet_s1s2_100_noshift_lr0.001_seed12
   seed: 12
 dataset:
   name: sen1floods11
@@ -12,23 +11,14 @@ dataset:
   test_csv: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv
   bolivia_csv: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv
 model:
-  name: croma
-  size: large
-  checkpoint: pretrained_models/CROMA_large.pt
-  modality: both
-  image_resolution: 120
-  freeze_encoder: true
-adapter:
-  name: token_to_spatial
-  feature_key: tokens
-  grid_size: null
+  name: resnet_unet
+  encoder_name: resnet18
+  in_channels: 15
 head:
-  name: linear_segmentation
-  in_channels: 1024
   num_classes: 2
 preprocessing:
   normalization:
-    method: two_sigma_stretch
+    method: zscore
     statistics: training_dataset
     use_8_bit: false
   band_indices:
@@ -46,6 +36,7 @@ preprocessing:
     - 7
     - 8
     - 9
+    - 10
     - 11
     - 12
   crop_size: 120
@@ -60,7 +51,7 @@ training:
     class_weights: null
   optimizer:
     name: adamw
-    learning_rate: 0.003
+    learning_rate: 0.001
     weight_decay: 0.01
   scheduler:
     name: cosine_annealing
@@ -80,12 +71,6 @@ evaluation:
   sample_id_key: chip_id
   checkpoint_metric: miou
   save_predictions: false
+  save_prediction_masks: true
 output:
-  directory: runs/sen1floods11/croma/linear/croma_s1s2_linear_100_noshift/lr0.003_seed12
-Initializing SAR encoder
-Initializing optical encoder
-Initializing joint SAR-optical encoder
-Evaluating test: 90 chips | selected epoch 28
-test: mIoU 0.8641 | non_water IoU 0.9638 | water IoU 0.7645
-Evaluating bolivia: 15 chips | selected epoch 28
-bolivia: mIoU 0.7621 | non_water IoU 0.9227 | water IoU 0.6016
+  directory: runs/sen1floods11/baselines/resnet18_unet/resnet18_unet_s1s2_100_noshift/lr0.001_seed12

@@ -2,16 +2,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Evaluate the completed S1+S2 runs with seeds 12 and 225.
+# Evaluate seed-12 S1+S2 checkpoints and export numerical prediction masks.
 CONFIGS = [
     "configs/evaluation/croma_s1s2_lr0.003_seed12.yaml",
-    "configs/evaluation/croma_s1s2_lr0.003_seed225.yaml",
     "configs/evaluation/terramind_s1s2_lr0.005_seed12.yaml",
-    "configs/evaluation/terramind_s1s2_lr0.005_seed225.yaml",
     "configs/evaluation/unet_s1s2_lr0.0003_seed12.yaml",
-    "configs/evaluation/unet_s1s2_lr0.0003_seed225.yaml",
     "configs/evaluation/resnet18_unet_s1s2_lr0.001_seed12.yaml",
-    "configs/evaluation/resnet18_unet_s1s2_lr0.001_seed225.yaml",
 ]
 
 if __name__ == "__main__":

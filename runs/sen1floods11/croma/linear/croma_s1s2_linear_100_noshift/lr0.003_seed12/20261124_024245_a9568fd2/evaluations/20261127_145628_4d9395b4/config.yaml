@@ -1,5 +1,5 @@
 experiment:
-  name: terramind_s1s2_linear_100_noshift_lr0.005_seed12
+  name: croma_s1s2_linear_100_noshift_lr0.003_seed12
   seed: 12
 dataset:
   name: sen1floods11
@@ -11,16 +11,11 @@ dataset:
   test_csv: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv
   bolivia_csv: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv
 model:
-  name: terramind_v1_large
+  name: croma
   size: large
-  checkpoint: pretrained_models/TerraMind_v1_large.pt
-  modalities:
-  - S1GRD
-  - S2L1C
-  input_mapping:
-    sar: S1GRD
-    optical: S2L1C
-  merge_method: mean
+  checkpoint: pretrained_models/CROMA_large.pt
+  modality: both
+  image_resolution: 120
   freeze_encoder: true
 adapter:
   name: token_to_spatial
@@ -32,8 +27,8 @@ head:
   num_classes: 2
 preprocessing:
   normalization:
-    method: zscore
-    statistics: pretraining_fixed
+    method: two_sigma_stretch
+    statistics: training_dataset
     use_8_bit: false
   band_indices:
     sar:
@@ -50,10 +45,9 @@ preprocessing:
     - 7
     - 8
     - 9
-    - 10
     - 11
     - 12
-  crop_size: 128
+  crop_size: 120
 training:
   epochs: 50
   batch_size: 8
@@ -65,7 +59,7 @@ training:
     class_weights: null
   optimizer:
     name: adamw
-    learning_rate: 0.005
+    learning_rate: 0.003
     weight_decay: 0.01
   scheduler:
     name: cosine_annealing
@@ -75,8 +69,8 @@ training:
 evaluation:
   aw_pw_fw: true
   batch_size: 1
-  tile_size: 128
-  stride: 85
+  tile_size: 120
+  stride: 80
   tile_batch_size: 8
   class_names:
   - non_water
@@ -84,6 +78,7 @@ evaluation:
   return_per_sample: true
   sample_id_key: chip_id
   checkpoint_metric: miou
+  save_prediction_masks: true
   save_predictions: false
 output:
-  directory: runs/sen1floods11/terramind/linear/terramind_s1s2_linear_100_noshift/lr0.005_seed12
+  directory: runs/sen1floods11/croma/linear/croma_s1s2_linear_100_noshift/lr0.003_seed12

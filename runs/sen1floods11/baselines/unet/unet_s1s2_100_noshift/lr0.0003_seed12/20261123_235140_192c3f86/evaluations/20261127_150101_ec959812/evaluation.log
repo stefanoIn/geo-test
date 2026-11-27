@@ -1,5 +1,6 @@
+Evaluation only | Source: runs\sen1floods11\baselines\unet\unet_s1s2_100_noshift\lr0.0003_seed12\20261123_235140_192c3f86 | Output: runs\sen1floods11\baselines\unet\unet_s1s2_100_noshift\lr0.0003_seed12\20261123_235140_192c3f86\evaluations\20261127_150101_ec959812 | Device: cuda
 experiment:
-  name: resnet18_unet_s1s2_100_noshift_lr0.001_seed12
+  name: unet_s1s2_100_noshift_lr0.0003_seed12
   seed: 12
 dataset:
   name: sen1floods11
@@ -11,8 +12,7 @@ dataset:
   test_csv: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv
   bolivia_csv: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv
 model:
-  name: resnet_unet
-  encoder_name: resnet18
+  name: unet
   in_channels: 15
 head:
   num_classes: 2
@@ -51,7 +51,7 @@ training:
     class_weights: null
   optimizer:
     name: adamw
-    learning_rate: 0.001
+    learning_rate: 0.0003
     weight_decay: 0.01
   scheduler:
     name: cosine_annealing
@@ -71,5 +71,10 @@ evaluation:
   sample_id_key: chip_id
   checkpoint_metric: miou
   save_predictions: false
+  save_prediction_masks: true
 output:
-  directory: runs/sen1floods11/baselines/resnet18_unet/resnet18_unet_s1s2_100_noshift/lr0.001_seed12
+  directory: runs/sen1floods11/baselines/unet/unet_s1s2_100_noshift/lr0.0003_seed12
+Evaluating test: 90 chips | selected epoch 47
+test: mIoU 0.8982 | non_water IoU 0.9737 | water IoU 0.8226
+Evaluating bolivia: 15 chips | selected epoch 47
+bolivia: mIoU 0.8568 | non_water IoU 0.9545 | water IoU 0.7592

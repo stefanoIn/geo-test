@@ -363,7 +363,7 @@ def _run_experiment(config, run_dir, device, resume=None):
 
 def run_evaluation_config(request, device=None):
     """Evaluate an explicit saved run using held-out split paths from YAML."""
-    allowed = {"mode", "source_run", "splits", "save_predictions"}
+    allowed = {"mode", "source_run", "splits", "save_predictions", "save_prediction_masks"}
     if set(request) - allowed:
         raise ValueError(f"Unknown evaluation YAML fields: {set(request) - allowed}")
     source = request.get("source_run")
@@ -375,11 +375,16 @@ def run_evaluation_config(request, device=None):
     save_predictions = request.get("save_predictions", False)
     if not isinstance(save_predictions, bool):
         raise ValueError("save_predictions must be true or false")
+    save_prediction_masks = request.get("save_prediction_masks", False)
+    if not isinstance(save_prediction_masks, bool):
+        raise ValueError("save_prediction_masks must be true or false")
     return run_evaluation(source, device=device, splits=list(split_csvs),
-                          save_predictions=save_predictions, split_csvs=split_csvs)
+                          save_predictions=save_predictions, split_csvs=split_csvs,
+                          save_prediction_masks=save_prediction_masks)
 
 
-def run_evaluation(run_dir, device=None, splits=None, save_predictions=None, split_csvs=None):
+def run_evaluation(run_dir, device=None, splits=None, save_predictions=None, split_csvs=None,
+                   save_prediction_masks=False):
     """Evaluate a saved best checkpoint without training or recomputing stats.
 
     Results go into a new evaluations/<id> folder inside the original run.
@@ -408,6 +413,11 @@ def run_evaluation(run_dir, device=None, splits=None, save_predictions=None, spl
                 raise FileNotFoundError(csv_path)
             config["dataset"][f"{split}_csv"] = csv_path
     options = config["evaluation"]
+    if not isinstance(save_prediction_masks, bool):
+        raise ValueError("save_prediction_masks must be true or false")
+    options["save_prediction_masks"] = save_prediction_masks
+    if save_prediction_masks and not options.get("sample_id_key", "chip_id"):
+        raise ValueError("Numerical mask export requires a dataset sample_id_key")
     if save_predictions is not None:
         options["save_predictions"] = save_predictions
     if not isinstance(options.get("save_predictions", False), bool):
@@ -510,6 +520,25 @@ def run_evaluation(run_dir, device=None, splits=None, save_predictions=None, spl
                 f"Evaluating {split}: {len(dataset)} chips | "
                 f"selected epoch {selected['epoch']}", flush=True,
             )
+            mask_dir = output / "prediction_masks" / split if save_prediction_masks else None
+            if mask_dir is not None:
+                names = options.get("class_names")
+                mask_metadata = {
+                    "format": "compressed numpy npz", "arrays": ["prediction", "target", "sample_id"],
+                    "source_run": str(run_dir), "evaluation_run": str(output),
+                    "split": split, "split_csv": config["dataset"][f"{split}_csv"],
+                    "split_sha256": split_hash,
+                    "seed": config["experiment"].get("seed", 42),
+                    "checkpoint": str(checkpoint), "checkpoint_sha256": checkpoint_hash,
+                    "selected_epoch": selected["epoch"],
+                    "sample_id_key": options.get("sample_id_key", "chip_id"),
+                    "num_classes": config["head"]["num_classes"],
+                    "class_mapping": {str(i): names[i] if names is not None else None
+                                      for i in range(config["head"]["num_classes"])},
+                    "ignore_index": criterion.ignore_index,
+                    "completed": False,
+                }
+                write_json(mask_dir / "metadata.json", mask_metadata)
             results = evaluate(
                 model, loader, device,
                 num_classes=config["head"]["num_classes"],
@@ -525,7 +554,11 @@ def run_evaluation(run_dir, device=None, splits=None, save_predictions=None, spl
                     output / "predictions" / split
                     if options.get("save_predictions", False) else None
                 ),
+                prediction_mask_dir=mask_dir,
             )
+            if mask_dir is not None:
+                mask_metadata.update(completed=True, num_samples=results["num_samples"])
+                write_json(mask_dir / "metadata.json", mask_metadata)
             save_evaluation_report(
                 output / "metrics" / f"{split}.json", results,
                 metadata={

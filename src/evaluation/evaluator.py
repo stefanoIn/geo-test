@@ -50,6 +50,7 @@ def evaluate(
     prediction_dir=None,
     sample_log_path=None,
     sample_log_metadata=None,
+    prediction_mask_dir=None,
 ) -> dict:
     """Return global counts/metrics, loss, and optional per-sample counts/metrics.
 
@@ -58,6 +59,7 @@ def evaluate(
     per-sample reports, but do not affect confusion-matrix counts or loss.
 
     prediction_dir optionally saves per-chip PNG comparisons; default saves none.
+    prediction_mask_dir optionally saves lossless numerical masks, requiring dataset IDs.
     sample_log_path optionally appends consumed chip order and class counts as JSONL.
     The caller owns preprocessing, choosing validation vs test data, and saving.
     For weighted CrossEntropyLoss(mean), global loss is aggregated with target
@@ -75,6 +77,9 @@ def evaluate(
             raise ValueError("CrossEntropyLoss must use reduction='mean'")
     if isinstance(input_keys, str):
         raise TypeError("input_keys must be a sequence of input names, not a string")
+
+    if prediction_mask_dir is not None and not sample_id_key:
+        raise ValueError("Numerical mask export requires a dataset sample_id_key")
 
     if aw_pw_fw and num_classes != 2:
         raise ValueError("AW/PW/FW requires binary non-water/water classes 0/1")
@@ -156,6 +161,14 @@ def evaluate(
                             "tile_size": tile_size, "stride": stride,
                         }
                         stream.write(json.dumps(record, allow_nan=False) + "\n")
+
+            if prediction_mask_dir is not None:
+                from src.evaluation.prediction_masks import save_prediction_masks
+                ids = _sample_ids(batch, sample_id_key, targets.shape[0], next_sample_index)
+                for idx, sample_id in enumerate(ids):
+                    save_prediction_masks(
+                        prediction_mask_dir, sample_id, targets[idx], predictions[idx],
+                    )
 
             if prediction_dir is not None:
                 from src.evaluation.prediction_plots import save_prediction_plot

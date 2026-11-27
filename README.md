@@ -116,6 +116,57 @@ Held-out evaluation must not be used for hyperparameter or checkpoint selection.
 
 The experimental configuration and selected checkpoint are retained alongside evaluation results to support subsequent analysis.
 
+### Numerical prediction masks (evaluation only)
+
+Evaluation YAMLs in `configs/evaluation/` accept `save_prediction_masks`,
+disabled by default. This is independent of `save_predictions`, which controls
+rendered per-sample figures:
+
+```yaml
+mode: evaluation
+source_run: runs/path/to/the/completed/training/run
+splits:
+  test: data/sen1floods11/splits/all_hand_labels/flood_test_data.csv
+  bolivia: data/sen1floods11/splits/all_hand_labels/flood_bolivia_data.csv
+save_predictions: false
+save_prediction_masks: true
+```
+
+Set the flag in an existing evaluation YAML, then run from the repository root:
+
+```powershell
+python run.py --path configs/evaluation/croma_s1s2_lr0.003_seed12.yaml
+```
+
+Each invocation creates a new `<source_run>/evaluations/<timestamp_uuid>/`.
+Numerical files are saved under `prediction_masks/<split>/`, excluded from Git.
+Each compressed `<safe_sample_id>_<sha256_of_id>.npz` contains:
+
+- `prediction`: the exact integer `[H, W]` mask after reconstruction and argmax,
+  also passed to quantitative metrics.
+- `target`: the corresponding integer `[H, W]` ground truth, including ignored pixels.
+- `sample_id`: the original dataset-provided identifier, stored as a Unicode scalar.
+
+There is no resizing, label remapping, masking of predictions, or integer downcast.
+All evaluated samples are exported, including individually all-ignored targets.
+The existing saved `evaluation.sample_id_key` (default `chip_id`) must identify
+a real batch field; numerical export does not accept positional fallback IDs.
+Repeated identifiers within a split raise an error rather than overwrite a file.
+The ID hash disambiguates identifiers that sanitise to the same filename.
+
+Each split has a `metadata.json` recording class IDs and configured names
+(`null` when names are unspecified), ignore index, seed, source run, selected
+checkpoint/hash and split/hash. `completed` is initially false and becomes true
+only after that split evaluates successfully, with the exported sample count.
+The evaluation directory also retains the effective configuration and normalisation.
+Interrupted exports are incomplete; rerun evaluation to create a fresh directory.
+
+Load files with `numpy.load(path, allow_pickle=False)`; `sample_id.item()` returns
+the original ID. No logits, probabilities or intermediate activations are saved.
+This option does not affect training or periodic validation. Standard metric
+summary figures retain their existing behaviour even when `save_predictions`
+is false.
+
 ## Evaluation metrics
 
 The framework records confusion counts and segmentation metrics, including:
